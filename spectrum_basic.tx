@@ -15,7 +15,6 @@ SourceLine: (line_number=INT)? statements*=Statement[':'];
 // Usage: Requires a variable name
 // Example: Used in LET
 // Rule needed for runtime single-letter check
-Variable: name=/[A-Z][ \tA-Z0-9]*\$/ | name=/[A-Z][ \tA-Z0-9]*/;
 
 // CLASS_02: Expression
 // Usage: Requires any expression
@@ -123,9 +122,10 @@ Primary: Number | String | VarDest | '(' Expression ')';
 Number: value=NUMBER;
 String: value=/"(?:[^"\n]|"")*"/;
 
-// Array references
-ArrayRef: name=/[A-Z]\$?/ '(' subscripts+=SliceExpression[','] ')';
-
+// Variables and Array references
+ArrayRef: name=VarSymbol '(' subscripts+=SliceExpression[','] ')';
+Variable: name=VarSymbol;
+VarSymbol: /[A-Z][ \tA-Z0-9]*\$?/;
 VarDest: ArrayRef | Variable;
 
 Slice: 
@@ -134,9 +134,6 @@ Slice:
     min=Expression 'TO';                   // To end: A$(2 TO)
 
 SliceExpression: Slice | Expression;
-
-// Note: Variable rule defined elsewhere
-
 
 // =====================================
 // Initial Statement Implementation
