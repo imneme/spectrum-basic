@@ -1,24 +1,8 @@
 from textx import metamodel_from_file
 import functools
+from os.path import dirname, join
 
-# Test program
-test_program = r"""
-3 PRINT INK 5; PAPER 0; "Hello, World!"
-5 INK 7: PAPER 0: BORDER 0: CLS
-10 LET A = POINT(10, 20): LET B = 42 + 7 * 3 + A(3, 2) + B^2
-15 LET D = (42 + 7) * 3: LET E = 3 - 2 - 1: LET F = 1 - (2 - 3)
-20 LET Long = CODE STR$ PI
-30 RANDOMIZE: RANDOMIZE A: RANDOMIZE 42
-40 BEEP 100, 1: PLOT INK 3; PAPER 0; 10, 20
-50 PRINT "Value is", A
-60 PRINT AT 10, 20; "Hello" ' "World",,,, 42;
-70 INPUT A
-80 INPUT LINE A$
-90 INPUT "Name? ", N$
-100 INPUT AT 10,20; "Age?"; A
-110 PRINT A$(TO 10); A$(2 TO 10); A$(2 TO); A$(5)
-120 GOTO 10
-"""
+# The ZX Spectrum BASIC Grammar is found in zxbasic.tx
 
 def spectrum_repr(value):
     """Print a value that can be parsed on a ZX Spectrum"""
@@ -232,6 +216,15 @@ class Variable(Expression):
     def __str__(self):
         return self.name
 
+class BinValue(Expression):
+    """Binary value"""
+    def __init__(self, parent, digits):
+        self.parent = parent
+        self.digits = digits
+    
+    def __str__(self):
+        return f"BIN {self.digits}"
+
 class ArrayRef(Expression):
     """Array reference"""
     def __init__(self, parent, name, subscripts):
@@ -277,11 +270,12 @@ class BinaryOp(Expression):
             
         return f"{lhs_str} {self.op} {rhs_str}"
 
+# Find zxbasic.tx in the same directory as this script
+META_PATH = join(dirname(__file__), "zxbasic.tx")
+
 # Create meta-model
-metamodel = metamodel_from_file("zxbasic.tx", ws='\t ', ignore_case=True, 
-                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, ArrayRef, Slice])
-
-
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
+                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Slice])
     
 def get_name(obj):
     """Get the name of an AST object"""
@@ -392,14 +386,31 @@ metamodel.register_obj_processors({
     "PowerExpr": ap_binop,
 })
 
+def parse_file(filename):
+    """Parse a BASIC program from a file"""
+    return metamodel.model_from_file(filename)
+    
+def parse_string(program):
+    """Parse a BASIC program from a string"""
+    return metamodel.model_from_str(program)
+
 if __name__ == '__main__':
+    import argparse
+    import sys
+
+    # Usage: python zxbasic.py [filename]
+    parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
+    parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse")
+    args = parser.parse_args()
+
     try:
-        # Parse the program
-        model = metamodel.model_from_str(test_program)
-        print("Program parsed successfully!")
+        # # Parse the program
+        # model = metamodel.model_from_str(test_program)
+        # print("Program parsed successfully!")
+        program = parse_file(args.filename)
 
         # Basic model inspection
-        for line in model.lines:
+        for line in program.lines:
             if line.line_number:
                 print(f"{line.line_number}\t", end="")
             else:
@@ -408,3 +419,4 @@ if __name__ == '__main__':
 
     except Exception as e:
         print(f"Parse error: {e}")
+        sys.exit(1)
