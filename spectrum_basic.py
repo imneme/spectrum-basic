@@ -2,7 +2,6 @@ from textx import metamodel_from_file
 import functools
 from os.path import dirname, join
 
-# The ZX Spectrum BASIC Grammar is found in zxbasic.tx
 
 def spectrum_repr(value):
     """Print a value that can be parsed on a ZX Spectrum"""
@@ -13,6 +12,7 @@ def spectrum_repr(value):
         doubled = value.replace('"', '""')
         return f'"{doubled}"'
     return repr(value)
+# The ZX Spectrum BASIC Grammar is found in spectrum_basic.tx
 
 # Operator precedence table (higher number = tighter binding)
 PRECEDENCE = {
