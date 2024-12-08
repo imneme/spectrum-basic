@@ -270,8 +270,8 @@ class BinaryOp(Expression):
             
         return f"{lhs_str} {self.op} {rhs_str}"
 
-# Find zxbasic.tx in the same directory as this script
-META_PATH = join(dirname(__file__), "zxbasic.tx")
+# Find spectrum_basic.tx in the same directory as this script
+META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
