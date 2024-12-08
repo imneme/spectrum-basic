@@ -60,6 +60,25 @@ class BuiltIn(Statement):
         else:
             return f"{self.action} {self.sep.join(map(str, present_args))}"
 
+class ColouredBuiltin(BuiltIn):
+    """Special case for commands that can have colour parameters"""
+    def __init__(self, parent, action, colours, *args):
+        super().__init__(parent, action, *args)
+        self.colours = colours or []
+    
+    def __str__(self):
+        parts = [self.action]
+        if self.colours:
+            colour_strs = [str(c) for c in self.colours]
+            parts.append(" ")
+            parts.append("; ".join(colour_strs))
+            parts.append(";")
+        if self.args:
+            if self.colours:
+                parts.append(" ")
+            parts.append(self.sep.join(map(spectrum_repr, self.args)))
+        return "".join(parts)
+
 class Let(Statement):
     """Assignment statement"""
     def __init__(self, parent, var, expr):
@@ -229,6 +248,14 @@ def ap_arg3(obj):
     """Object to turn three-argument commands into Action objects"""
     return BuiltIn(obj.parent, get_name(obj), obj.expr1, obj.expr2, obj.expr3)
 
+def ap_coloured(obj):
+    """Object processor for PLOT/DRAW/CIRCLE commands with optional colour parameters"""
+    # Circle or Draw with angle
+    if hasattr(obj, "expr3") and obj.expr3 is not None:
+        return ColouredBuiltin(obj.parent, get_name(obj), obj.colours, obj.expr1, obj.expr2, obj.expr3)
+    else:  # Plot or Draw without angle
+        return ColouredBuiltin(obj.parent, get_name(obj), obj.colours, obj.expr1, obj.expr2)
+
 # Object processor for PRINT-like statements
 
 def ap_print_like(obj):
@@ -276,10 +303,10 @@ metamodel.register_obj_processors({
     "Beep": ap_arg2,
     "Out": ap_arg2,
     "Poke": ap_arg2,
-    "Plot": ap_arg2,
+    "Plot": ap_coloured,
     # 3-argument commands
-    "Draw": ap_arg3,
-    "Circle": ap_arg3,
+    "Draw": ap_coloured,
+    "Circle": ap_coloured,
     # PRINT-like statements
     "Print": ap_print_like,
     "Lprint": ap_print_like,
