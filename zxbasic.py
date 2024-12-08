@@ -6,6 +6,7 @@ test_program = r"""
 3 PRINT INK 5; PAPER 0; "Hello, World!"
 5 INK 7: PAPER 0: BORDER 0: CLS
 10 LET A = POINT(10, 20): LET B = 42 + 7 * 3 + A(3, 2) + B^2
+15 LET D = (42 + 7) * 3: LET E = 3 - 2 - 1: LET F = 1 - (2 - 3)
 20 LET Long = CODE STR$ PI
 30 RANDOMIZE: RANDOMIZE A: RANDOMIZE 42
 40 BEEP 100, 1: PLOT INK 3; PAPER 0; 10, 20
@@ -29,6 +30,53 @@ def spectrum_repr(value):
         return f'"{doubled}"'
     return repr(value)
 
+# Operator precedence table (higher number = tighter binding)
+PRECEDENCE = {
+    'OR': 2,
+    'AND': 3,
+    '=': 5, '<': 5, '>': 5, '<=': 5, '>=': 5, '<>': 5,
+    '+': 6, '-': 6,
+    '*': 8, '/': 8,
+    '^': 10,
+}
+
+def is_complex(expr):
+    """Determine if an expression needs parentheses in function context"""
+    if isinstance(expr, BinaryOp):
+        return True
+    # Could add other cases here
+    return False
+
+def needs_parens(expr, parent_op=None, is_rhs=False):
+    """Determine if expression needs parentheses based on context"""
+    if not isinstance(expr, BinaryOp):
+        return False
+        
+    expr_prec = PRECEDENCE[expr.op]
+    
+    if parent_op is None:
+        return False
+        
+    parent_prec = PRECEDENCE[parent_op]
+    
+    # Different cases where we need parens:
+    
+    # Lower precedence always needs parens
+    if expr_prec < parent_prec:
+        return True
+        
+    # Equal precedence depends on operator and position
+    if expr_prec == parent_prec:
+        # For subtraction and division, right side always needs parens
+        if parent_op in {'-', '/'} and is_rhs:
+            return True
+        # For power, both sides need parens if same precedence
+        if parent_op == '^':
+            return True
+    
+    return False
+
+
 # Classes for the BASIC language
 
 class Statement:
@@ -38,7 +86,7 @@ class Statement:
 
 class BuiltIn(Statement):
     """Represents simple built-in commands with fixed argument patterns"""
-    def __init__(self, parent, action, *args, sep=","):
+    def __init__(self, parent, action, *args, sep=", "):
         self.parent = parent
         self.action = action
         self.args = args
@@ -48,17 +96,21 @@ class BuiltIn(Statement):
     def __str__(self):
         if not self.args:
             return self.action
+            
         present_args = [spectrum_repr(arg) for arg in self.args if arg is not None]
         if self.is_expr:
-            if (len(present_args) > 1):
-                return f"{self.action}({self.sep.join(map(str, present_args))})"
-            elif (len(present_args) == 1):
-                return f"{self.action} {present_args[0]}"
-            else:
+            if len(present_args) == 1:
+                # For single argument function-like expressions, only add parens if needed
+                arg_str = present_args[0]
+                if is_complex(self.args[0]):
+                    return f"{self.action} ({arg_str})"
+                return f"{self.action} {arg_str}"
+            elif len(present_args) == 0:
                 return f"{self.action}"
-            return f"{self.action}({self.sep.join(map(str, present_args))})"
+            else:
+                return f"{self.action}({self.sep.join(present_args)})"
         else:
-            return f"{self.action} {self.sep.join(map(str, present_args))}"
+            return f"{self.action} {self.sep.join(present_args)}"
 
 class ColouredBuiltin(BuiltIn):
     """Special case for commands that can have colour parameters"""
@@ -206,15 +258,24 @@ class Slice(Expression):
         return f"{self.min} TO {self.max}"
 
 class BinaryOp(Expression):
-    """Binary operation"""
+    """Binary operation with smart string formatting"""
     def __init__(self, op, left, right):
-        # No parent tracking
         self.op = op
         self.lhs = left
         self.rhs = right
     
     def __str__(self):
-        return f"({self.lhs} {self.op} {self.rhs})"
+        # Format left side
+        lhs_str = str(self.lhs)
+        if isinstance(self.lhs, BinaryOp) and needs_parens(self.lhs, self.op, False):
+            lhs_str = f"({lhs_str})"
+            
+        # Format right side
+        rhs_str = str(self.rhs)
+        if isinstance(self.rhs, BinaryOp) and needs_parens(self.rhs, self.op, True):
+            rhs_str = f"({rhs_str})"
+            
+        return f"{lhs_str} {self.op} {rhs_str}"
 
 # Create meta-model
 metamodel = metamodel_from_file("zxbasic.tx", ws='\t ', ignore_case=True, 
