@@ -15,7 +15,7 @@ SourceLine: (line_number=INT)? statements*=Statement[':'];
 // Usage: Requires a variable name
 // Example: Used in LET
 // Rule needed for runtime single-letter check
-Variable: name=/[A-Z]\$/ | name=/[A-Z][A-Z0-9]*/;
+Variable: name=/[A-Z][ \tA-Z0-9]*\$/ | name=/[A-Z][ \tA-Z0-9]*/;
 
 // CLASS_02: Expression
 // Usage: Requires any expression

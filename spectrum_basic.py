@@ -201,7 +201,7 @@ class Variable(Expression):
     """Variable reference"""
     def __init__(self, parent, name):
         self.parent = parent
-        self.name = name
+        self.name = name.replace(" ", "").replace("\t", "")
     
     def __str__(self):
         return self.name
