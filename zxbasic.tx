@@ -1,0 +1,246 @@
+// Basic program structure
+Program: /\s*/ lines*=SourceLine[/\n\s*/] /\s*/;
+SourceLine: (line_number=INT)? statements*=Statement[':'];
+
+// =====================================
+// Syntactic Class Patterns
+// =====================================
+
+// CLASS_00: No operands
+// Usage: Just the keyword alone
+// Example: NEW, STOP, RETURN
+// Pattern: 'KEYWORD'
+
+// CLASS_01: Variable
+// Usage: Requires a variable name
+// Example: Used in LET
+// Rule needed for runtime single-letter check
+Variable: name=/[A-Z]\$/ | name=/[A-Z][A-Z0-9]*/;
+
+// CLASS_02: Expression
+// Usage: Requires any expression
+// Example: Right side of LET
+
+// CLASS_03: Optional numeric expression
+// Usage: Optional expression that must be numeric at runtime
+// Example: RUN [expr]
+// Pattern: (expression=Expression)?
+
+// CLASS_04: Single-character variable
+// Usage: Single letter variable name
+// Example: FOR/NEXT control variables
+// Uses Variable rule but with runtime check for single letter
+
+// CLASS_05: List of items
+// Usage: Set of items separated by delimiters
+// Example: PRINT items
+// Rule needed for complex cases like PRINT
+
+// CLASS_06: Required numeric expression
+// Usage: Expression that must be numeric at runtime
+// Example: GOTO expr
+// Pattern: expression=Expression
+
+// CLASS_07: Colour items
+// Usage: Colour parameters
+// Example: INK, PAPER
+
+// CLASS_08: Two numeric expressions with comma
+// Usage: Two expressions that must be numeric at runtime
+// Example: POKE addr, value
+// Pattern: expr1=Expression ',' expr2=Expression
+
+// CLASS_09: CLASS_08 with optional colour items
+// Usage: Like CLASS_08 but with optional colour parameters
+// Example: PLOT
+// Pattern: (colour=ColourParam)* expr1=Expression ',' expr2=Expression
+
+// CLASS_0A: String expression
+// Usage: Expression that must be string at runtime
+// Example: SAVE with filename
+// Pattern: expression=Expression
+
+// CLASS_0B: Cassette operations
+// Usage: Complex patterns for tape operations
+// Example: SAVE, LOAD, VERIFY
+// Will need specific rules for each variant
+
+// Expressions
+
+// Expression grammar for ZX Spectrum BASIC
+
+// Top level expression handles OR (lowest precedence)
+Expression: OrExpr;
+
+// Precedence levels from low (2) to high (10)
+OrExpr: first=AndExpr rest*=OrOpExpr;
+OrOpExpr: op='OR' expr=AndExpr;
+
+AndExpr: first=CompareExpr rest*=AndOpExpr;
+AndOpExpr: op='AND' expr=CompareExpr;
+
+// All comparison operators have same precedence (5)
+CompareExpr: first=AddExpr rest*=CompareOpExpr;
+CompareOpExpr: op=CompareOp expr=AddExpr;
+CompareOp: '<=' | '>=' | '<>' | '>' | '<' | '=';
+
+// Addition/subtraction (priority 6)
+// AddExpr: exprs=MultExpr (('+' | '-') MultExpr)*;
+AddExpr: first=MultExpr rest*=AddOpExpr;
+AddOpExpr: op=AddOp expr=MultExpr;
+AddOp: '+' | '-';
+
+// Multiplication/division (priority 8)
+// MultExpr: PowerExpr (('*' | '/') PowerExpr)*;
+MultExpr: first=PowerExpr rest*=MultOpExpr;
+MultOpExpr: op=MultOp expr=PowerExpr;
+MultOp: '*' | '/';
+
+// Power operator (priority 10)
+// PowerExpr: FunctionExpr ('^' FunctionExpr)*;
+PowerExpr: first=FunctionExpr rest*=PowerOpExpr;
+PowerOpExpr: op='^' expr=FunctionExpr;
+
+// Functions and primary expressions
+FunctionExpr: Function | SpecialFn | Primary;
+
+// Functions (parentheses optional unless needed for precedence)
+Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
+FunctionName: 'ABS' | 'ACS' | 'ASN' | 'ATN' | 'COS' | 'EXP' | 'INT' | 
+             'LN' | 'SGN' | 'SIN' | 'SQR' | 'TAN' | 'USR' | 'LEN' |
+             'CODE' | 'VAL' | 'CHR$' | 'STR$' | 'VAL$' | 'NOT' | '-';
+
+// Functions with multiple arguments
+TwoArgName: 'ATTR' | 'POINT' | 'SCREEN$';
+TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
+PiValue: 'PI';
+SpecialFn: TwoArgFn | PiValue;
+
+// Primary expressions
+Primary: NUMBER | STRING | ArrayRef | Variable | '(' Expression ')';
+
+// Array references
+ArrayRef: name=/[A-Z]\$?/ '(' subscripts+=SliceExpression[','] ')';
+
+VarDest: Variable | ArrayRef;
+
+Slice: 
+    'TO' max=Expression |                  // From start: A$(TO 10)
+    min=Expression 'TO' max=Expression |   // Range: A$(2 TO 10)
+    min=Expression 'TO';                   // To end: A$(2 TO)
+
+SliceExpression: Slice | Expression;
+
+// Note: Variable rule defined elsewhere
+
+
+// =====================================
+// Initial Statement Implementation
+// =====================================
+Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
+    Restore | Pause | Border | Run | Clear | Randomize | Beep | Out |
+    Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
+    Plot | Draw | Circle | Print | Lprint | Input | Save |
+    Load | Verify | Merge | DefFn | Rem;
+
+// Statement types organized by their class patterns
+
+// ==================================
+// CLASS_00 - No operands
+// ==================================
+New: 'NEW';
+Stop: 'STOP';
+Return: 'RETURN';
+Continue: 'CONTINUE';
+Copy: 'COPY';
+Cls: 'CLS';
+Cat: 'CAT';
+
+// ==================================
+// Simple CLASS_06 - Single numeric expression
+// ==================================
+Goto: 'GOTO' expr=Expression;
+Gosub: 'GOSUB' expr=Expression;
+Restore: 'RESTORE' expr=Expression;
+Pause: 'PAUSE' expr=Expression;
+Border: 'BORDER' expr=Expression;
+
+// ==================================
+// CLASS_03 - Optional numeric expression
+// ==================================
+Run: 'RUN' (expr=Expression)?;
+Clear: 'CLEAR' (expr=Expression)?;
+Randomize: 'RANDOMIZE' (expr=Expression)?;
+
+// ==================================
+// CLASS_08 - Two numeric expressions
+// ==================================
+Beep: 'BEEP' expr1=Expression ',' expr2=Expression;
+Out: 'OUT' expr1=Expression ',' expr2=Expression;
+Poke: 'POKE' expr1=Expression ',' expr2=Expression;
+
+// ==================================
+// Variable and assignment statements
+// ==================================
+Let: 'LET' var=VarDest '=' expr=Expression;
+Read: 'READ' vars+=VarDest[','];
+Data: 'DATA' items+=Expression[','];
+Dim: 'DIM' var=Variable '(' dims+=Expression[','] ')';
+
+// ==================================
+// Loop and control statements
+// ==================================
+For: 'FOR' var=Variable '=' start=Expression 'TO' end=Expression ('STEP' step=Expression)?;
+Next: 'NEXT' var=Variable;
+If: 'IF' condition=Expression 'THEN' statements+=Statement[':'];
+
+// ==================================
+// Colour control statements (CLASS_07)
+// ==================================
+ColourOp: 'INK' | 'PAPER' | 'FLASH' | 'BRIGHT' | 'INVERSE' | 'OVER';
+ColourParam: name=ColourOp expr=Expression;
+ColourStmt: ColourParam;
+
+// ==================================
+// Graphics statements (CLASS_09)
+// ==================================
+Plot: 'PLOT' (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression;
+Draw: 'DRAW' (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression (',' expr3=Expression)?;
+Circle: 'CIRCLE' (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression ',' expr3=Expression;
+
+// ==================================
+// Print and Input statements (CLASS_05)
+// ==================================
+PrintItem: ColourParam | At | Tab | Expression;
+At: 'AT' expr1=Expression ',' expr2=Expression;
+Tab: 'TAB' expr=Expression;
+PrintSeparator: ',' | ';' | '\'';
+PrintSeparatedItem: item=PrintItem? sep=PrintSeparator;
+Print: 'PRINT' items*=PrintSeparatedItem (final=PrintItem)?;
+Lprint: 'LPRINT' items*=PrintItem[','];
+
+InputItem: ColourParam | At | Tab | Line | VarDest | Expression;
+PrintSeparator: ',' | ';' | '\'';
+InputSeparatedItem: item=InputItem? sep=PrintSeparator;
+Input: 'INPUT' items*=InputSeparatedItem (final=InputItem)?;
+
+Line: 'LINE' expr=Expression;
+
+// ==================================
+// Cassette/Storage statements (CLASS_0B)
+// ==================================
+SaveMode: Line | 'CODE' addr=Expression (',' length=Expression)? | 'DATA' var=Variable | 'SCREEN$';
+Save: 'SAVE' name=Expression (mode=SaveMode)?;
+Load: 'LOAD' name=Expression (mode=SaveMode)?;
+Verify: 'VERIFY' name=Expression (mode=SaveMode)?;
+Merge: 'MERGE' name=Expression;
+
+// ==================================
+// User-defined functions
+// ==================================
+DefFn: 'DEF' 'FN' name=Variable ('(' params+=Variable[','] ')')? '=' expr=Expression;
+
+// ==================================
+// Rem (special case - consumes to EOL)
+// ==================================
+Rem: 'REM' /[^\n]*/;
