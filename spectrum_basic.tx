@@ -114,7 +114,8 @@ TwoArgName: 'ATTR' | 'POINT' | 'SCREEN$';
 TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
 PiValue: 'PI';
 BinValue: 'BIN' digits=/[01]+/;
-SpecialFn: TwoArgFn | PiValue | BinValue;
+Fn: 'FN' name=VarSymbol '(' args*=Expression[','] ')';
+SpecialFn: TwoArgFn | PiValue | BinValue | Fn;
 
 // Primary expressions
 Primary: Number | String | VarDest | '(' Expression ')';
@@ -239,7 +240,7 @@ Merge: 'MERGE' name=Expression;
 // ==================================
 // User-defined functions
 // ==================================
-DefFn: 'DEF' 'FN' name=Variable ('(' params+=Variable[','] ')')? '=' expr=Expression;
+DefFn: 'DEF' 'FN' name=VarSymbol ('(' params+=Variable[','] ')')? '=' expr=Expression;
 
 // ==================================
 // Rem (special case - consumes to EOL)

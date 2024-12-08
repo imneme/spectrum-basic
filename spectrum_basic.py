@@ -1,6 +1,13 @@
 from textx import metamodel_from_file
 import functools
 from os.path import dirname, join
+from enum import Enum, auto
+
+class Walk(Enum):
+    ENTERING = auto()
+    VISITING = auto()
+    LEAVING = auto()
+    SKIP = auto()
 
 # The ZX Spectrum BASIC Grammar is found in spectrum_basic.tx
 
@@ -50,6 +57,31 @@ def needs_parens(expr, parent_op=None, is_rhs=False):
     
     return False
 
+# Rather than a visitor patter, we use a generator-based approach with
+# a walk function that yields “visit events” for each node in the tree
+
+def walk(obj):
+    """Handles walking over the AST, but particularly non-AST nodes"""
+    if obj is None:
+        return
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from walk(item)
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            yield from walk(value)
+    elif isinstance(obj, (str, int, float)):
+        yield (Walk.VISITING, obj)
+    elif hasattr(obj, "walk"):
+        yield from obj.walk()
+    # raw AST nodes have a _tx_attrs attribute whose keys are the names of the attributes
+    elif hasattr(obj, "_tx_attrs"):
+        yield (Walk.VISITING, obj)
+        for attr in obj._tx_attrs:
+            yield from walk(getattr(obj, attr))
+        yield (Walk.LEAVING, obj)
+    else:
+        yield (Walk.VISITING, obj)
 
 # Classes for the BASIC language
 
@@ -57,6 +89,10 @@ class Statement:
     """Base class for all BASIC statements"""
     def __repr__(self):
         return str(self)
+    
+    def walk(self):
+        """Base walk method for all statements"""
+        yield (Walk.VISITING, self)
 
 class BuiltIn(Statement):
     """Represents simple built-in commands with fixed argument patterns"""
@@ -85,6 +121,12 @@ class BuiltIn(Statement):
                 return f"{self.action}({self.sep.join(present_args)})"
         else:
             return f"{self.action} {self.sep.join(present_args)}"
+        
+    def walk(self):
+        """Walk method for built-in commands"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.args)
+        yield (Walk.LEAVING, self)
 
 class ColouredBuiltin(BuiltIn):
     """Special case for commands that can have colour parameters"""
@@ -105,6 +147,13 @@ class ColouredBuiltin(BuiltIn):
             parts.append(self.sep.join(map(str, self.args)))
         return "".join(parts)
 
+    def walk(self):
+        """Walk method for coloured built-in commands"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.colours)
+        yield from walk(self.args)
+        yield (Walk.LEAVING, self)
+
 class Let(Statement):
     """Assignment statement"""
     def __init__(self, parent, var, expr):
@@ -114,6 +163,13 @@ class Let(Statement):
     
     def __str__(self):
         return f"LET {self.var} = {self.expr}"
+    
+    def walk(self):
+        """Walk method for LET statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.var)
+        yield from walk(self.expr)
+        yield (Walk.LEAVING, self)
 
 class For(Statement):
     """FOR loop statement"""
@@ -128,6 +184,16 @@ class For(Statement):
         if self.step:
             return f"FOR {self.var} = {self.expr} TO {self.end} STEP {self.step}"
         return f"FOR {self.var} = {self.start} TO {self.end}"
+    
+    def walk(self):
+        """Walk method for FOR statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.var)
+        yield from walk(self.start)
+        yield from walk(self.end)
+        if self.step:
+            yield from walk(self.step)
+        yield (Walk.LEAVING, self)
                                        
 class Next(Statement):
     """NEXT statement"""
@@ -137,6 +203,12 @@ class Next(Statement):
     
     def __str__(self):
         return f"NEXT {self.var}"
+    
+    def walk(self):
+        """Walk method for NEXT statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.var)
+        yield (Walk.LEAVING, self)
 
 class If(Statement):
     """IF statement with statement list"""
@@ -148,6 +220,13 @@ class If(Statement):
     def __str__(self):
         stmts = ": ".join(str(stmt) for stmt in self.statements)
         return f"IF {self.condition} THEN {stmts}"
+    
+    def walk(self):
+        """Walk method for IF statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.condition)
+        yield from walk(self.statements)
+        yield (Walk.LEAVING, self)
 
 class Dim(Statement):
     """Array dimension statement"""
@@ -159,6 +238,13 @@ class Dim(Statement):
     def __str__(self):
         dims = ", ".join(str(d) for d in self.dimensions)
         return f"DIM {self.var}({dims})"
+    
+    def walk(self):
+        """Walk method for DIM statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.var)
+        yield from walk(self.dimensions)
+        yield (Walk.LEAVING, self)
 
 class DefFn(Statement):
     """Function definition"""
@@ -173,6 +259,13 @@ class DefFn(Statement):
             params = ", ".join(str(p) for p in self.params)
             return f"DEF FN {self.name}({params}) = {self.expr}"
         return f"DEF FN {self.name} = {self.expr}"
+    
+    def walk(self):
+        """Walk method for DEF FN statements"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.params)
+        yield from walk(self.expr)
+        yield (Walk.LEAVING, self)
 
 class PrintItem:
     """Represents items in PRINT statement"""
@@ -190,12 +283,23 @@ class PrintItem:
     def __repr__(self):
         return str(self)
     
+    def walk(self):
+        """Walk method for PRINT items"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.value)
+        yield from walk(self.separator)
+        yield (Walk.LEAVING, self)
+    
 # Expression classes
 
 class Expression:
     """Base class for all expressions"""
     def __repr__(self):
         return str(self)
+    
+    def walk(self):
+        """Base walk method for all expressions"""
+        yield (Walk.VISITING, self)
 
 class Variable(Expression):
     """Variable reference"""
@@ -205,7 +309,7 @@ class Variable(Expression):
     
     def __str__(self):
         return self.name
-    
+
 class Number(Expression):
     """Numeric value"""
     def __init__(self, parent, value):
@@ -244,6 +348,33 @@ class ArrayRef(Expression):
     def __str__(self):
         subscripts = ", ".join(str(s) for s in self.subscripts)
         return f"{self.name}({subscripts})"
+    
+    def walk(self):
+        """Walk method for array references"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.name)
+        yield from walk(self.subscripts)
+        yield (Walk.LEAVING, self)
+
+# Fn: 'FN' name=Variable '(' args*=Expression[','] ')';
+
+class Fn(Expression):
+    """FN call (to function defined with DEF FN)"""
+    def __init__(self, parent, name, args):
+        self.parent = parent
+        self.name = name
+        self.args = args
+    
+    def __str__(self):
+        arg_strs = ", ".join(str(arg) for arg in self.args)
+        return f"{self.name}({arg_strs})"
+    
+    def walk(self):
+        """Walk method for FN calls"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.name)
+        yield from walk(self.args)
+        yield (Walk.LEAVING, self)
 
 class Slice(Expression):
     """Array slice expression"""
@@ -258,6 +389,13 @@ class Slice(Expression):
         if self.max is None:
             return f"{self.min} TO"
         return f"{self.min} TO {self.max}"
+    
+    def walk(self):
+        """Walk method for array slices"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.min)
+        yield from walk(self.max)
+        yield (Walk.LEAVING, self)
 
 class BinaryOp(Expression):
     """Binary operation with smart string formatting"""
@@ -278,13 +416,20 @@ class BinaryOp(Expression):
             rhs_str = f"({rhs_str})"
             
         return f"{lhs_str} {self.op} {rhs_str}"
+    
+    def walk(self):
+        """Walk method for binary operations"""
+        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
+        yield from walk(self.lhs)
+        yield from walk(self.rhs)
+        yield (Walk.LEAVING, self)
 
 # Find spectrum_basic.tx in the same directory as this script
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
-                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Slice, Number, String])
+                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String])
     
 def get_name(obj):
     """Get the name of an AST object"""
@@ -403,14 +548,244 @@ def parse_string(program):
     """Parse a BASIC program from a string"""
     return metamodel.model_from_str(program)
 
+# A simple walker to find the names of all the variables in a program
+
+# def find_variables(program):
+#     """Find all the variables in a program"""
+#     variables = {}
+#     for event, obj in walk(program):
+#         if event == Walk.VISITING:
+#             if isinstance(obj, Variable):
+#                 lowname = obj.name.lower()
+#                 if lowname not in variables:
+#                     variables[lowname] = obj.name
+#     return sorted(variables.values())
+
+def find_variables(program):
+    """Find all the variables in a program"""
+    vars = {kind: {} for kind in ["numeric", "string", "numeric-array", "fn", "fn-info", "param", "loop-var"]}
+    def used_var(kind, var, varDict=None):
+        lowname = var.lower()
+        if varDict is None:
+            varDict = vars
+        return varDict.setdefault(kind, {}).setdefault(lowname, var)
+    def vars_to_lists(vars):
+        return {kind: sorted(vars[kind].values()) if kind != "fn-info" else vars[kind]
+                for kind in vars}
+    stack = []
+    for event, obj in walk(program):
+        if event == Walk.VISITING:
+            if isinstance(obj, Variable):
+                kind = "string" if obj.name.endswith("$") else "numeric"
+                used_var(kind, obj.name)
+        elif event == Walk.ENTERING:
+            if isinstance(obj, (ArrayRef, Dim)):
+                kind = "string" if obj.name.endswith("$") else "numeric-array"
+                used_var(kind, obj.name)
+            elif isinstance(obj, For):
+                used_var("loop-var", obj.var.name)
+            elif isinstance(obj, Fn):
+                used_var("fn", obj.name)
+            elif isinstance(obj, DefFn):
+                name = used_var("fn", obj.name)
+                # Push the names of the unbound parameters
+                lparams = [p.name.lower() for p in obj.params]
+                newvars = {}
+                for lparam, param in zip(lparams, obj.params):
+                    used_var("param", param.name)
+                    used_var("param", param.name, newvars)
+                stack.append((name, lparams, vars))
+                vars = newvars
+        elif event == Walk.LEAVING:
+            if isinstance(obj, DefFn):
+                # Restore and update the numeric variables
+                (name, lparams, oldvars) = stack.pop()
+                # Remove the params to leave the free variables
+                freevars = vars["numeric"]
+                for lparam in lparams:
+                    freevars.pop(lparam, None)
+                vars["numeric"] = freevars
+                # Remember what this function used (its free variables)
+                oldvars["fn-info"][name] = vars_to_lists(vars)
+                # Merge the the two sets of variables
+                for kind in vars:
+                    oldvars[kind].update(vars[kind])
+                vars = oldvars
+    # Convert to sorted lists
+    return vars_to_lists(vars)
+
+def list_program(program, file=None):
+    """List the program in a BASIC-like format"""
+    for line in program.lines:
+        if line.line_number:
+            print(f"{line.line_number}\t", end="", file=file)
+        else:
+            print("\t", end="", file=file)
+        print(": ".join(str(stmt) for stmt in line.statements), file=file)
+
+# Seems silly a function like this one isn't in the standard library
+
+def baseN(num,b,numerals="0123456789abcdefghijklmnopqrstuvwxyz"):
+    """Convert a number to a base-N numeral"""
+    return numerals[0] if num == 0 else baseN(num // b, b, numerals).lstrip(numerals[0]) + numerals[num % b]
+
+def var_generator(start='A', one_letter=True, taken_names=None):
+    """Generate fresh variable names, avoiding those in taken_names"""
+    if taken_names is None:
+        taken_names = set()
+    offset = ord(start) - ord('A')
+    pos = 0
+    cycles = 0
+    while cycles == 0 or not one_letter:
+        name = chr((pos + offset) % 26 + ord('A'))
+        if cycles > 0:
+            # Convert to base 36
+            name += baseN(cycles-1, 36)
+        if name not in taken_names:
+            taken_names.add(name)
+            yield name
+        pos += 1
+        if pos >= 26:
+            pos = 0
+            cycles += 1
+    # If we get here, we've run out of names
+    raise ValueError("Out of variable names")
+
+
+def calculate_remapping(vars):
+    """Create minimal remapping for each namespace"""
+    namespaceInfo = {
+        'numeric': {'start': 'A', 'one_letter': False},
+        'string': {'start': 'A', 'one_letter': True},
+        'numeric-array': {'start': 'A', 'one_letter': True},
+        'fn': {'start': 'F', 'one_letter': True},
+    }
+    def make_remapper(info, taken_names=None, remapping=None):
+        taken_names = taken_names or set()
+        remapping = remapping or {}
+        generator = var_generator(info['start'], info['one_letter'], taken_names)
+        def remapper(var):
+            lvar = var.lower()
+            if lvar in remapping:
+                return remapping[lvar]
+            # If they're already using a single letter, don't remap if the
+            # name isn't already taken
+            is_string = var.endswith("$")
+            lvar_no_sigil = lvar[:-1] if is_string else lvar
+            if len(lvar_no_sigil) == 1 and not lvar_no_sigil in taken_names:
+                taken_names.add(lvar_no_sigil)
+                return remapping.setdefault(lvar, var)
+            newname = next(generator)
+            newname += "$" if is_string else ""
+            result = remapping.setdefault(lvar, newname)
+            return result
+        return remapping, remapper
+
+    remappingFor = {}
+    for kind in namespaceInfo:
+        info = namespaceInfo[kind]
+        if kind == "numeric":
+            # For numeric variables, we first remapp the loop variables,
+            # since they must be single letters
+            taken1 = set()
+            remapping1, remap1 = make_remapper({'start': 'I', 'one_letter': True}, taken_names=taken1)
+            for var in vars["loop-var"]:
+                remap1(var)
+            # Then we remap the rest as usual
+            remapping, remap = make_remapper(info, taken_names=taken1, remapping=remapping1)
+        else:
+            remapping, remap = make_remapper(info)
+        # We'll sort by length to put the single-letter variables first
+        for var in sorted(vars[kind], key=len):
+            remap(var)
+        remappingFor[kind] = remapping
+
+    # Remap the parameters of functions
+    remappingFor["fn-params"] = {}
+    for fn, fn_info in vars["fn-info"].items():
+        # taken1 still holds all the numeric vairables, which we must avoid
+        remapping, remap = make_remapper({'start': 'X', 'one_letter': True}, taken_names=taken1)
+        for param in fn_info["param"]:
+           remap(param)
+        lfn = fn.lower()
+        remappingFor["fn-params"][remappingFor["fn"][lfn].lower()] = remapping
+
+    return remappingFor
+
+def remap_variables(program, remapping):
+    """Apply the remapping to all variables in the program"""
+    stack = []
+    for event, obj in walk(program):
+        if event == Walk.VISITING:
+            if isinstance(obj, Variable):
+                lowname = obj.name.lower()
+                kind = "string" if obj.name.endswith("$") else "numeric"
+                if lowname in remapping[kind]:
+                    obj.name = remapping[kind][lowname]
+        elif event == Walk.ENTERING:
+            if isinstance(obj, (ArrayRef, Dim)):
+                lowname = obj.name.lower()
+                kind = "string" if obj.name.endswith("$") else "numeric-array"
+                if lowname in remapping[kind]:
+                    obj.name = remapping[kind][lowname]
+            elif isinstance(obj, Fn):
+                lowname = obj.name.lower()
+                if lowname in remapping["fn"]:
+                    obj.name = remapping["fn"][lowname]
+            elif isinstance(obj, DefFn):
+                lowname = obj.name.lower()
+                if lowname in remapping["fn"]:
+                    remapped = remapping["fn"][lowname]
+                    obj.name = remapped
+                    lowname = remapped.lower()
+                # Push current parameter mappings and create new ones
+                param_state = {}
+                for param in obj.params:
+                    lparam = param.name.lower()
+                    if lparam in remapping["numeric"]:
+                        param_state[lparam] = remapping["numeric"][lparam]
+                        # Remove from current mapping while in function
+                        del remapping["numeric"][lparam]
+                    # Apply parameter mapping
+                    param_remap = remapping["fn-params"][lowname]
+                    if lparam in param_remap:
+                        mparam = param_remap[lparam]
+                        param.name = mparam
+                        remapping["numeric"][lparam] = mparam
+                stack.append((param_state, param_remap.keys()))
+        elif event == Walk.LEAVING:
+            if isinstance(obj, DefFn):
+                # Restore parameter mappings
+                param_state, lparams = stack.pop()
+                for lparam in lparams:
+                    remapping["numeric"].pop(lparam, None)
+                remapping["numeric"].update(param_state)
+
+def minimize_variables(program):
+    """Find all variables and remap them to minimal form"""
+    vars = find_variables(program)
+    remapping = calculate_remapping(vars)
+    print(remapping)
+    remap_variables(program, remapping)
+
 if __name__ == '__main__':
     import argparse
     import sys
+    import json
 
-    # Usage: python zxbasic.py [filename]
+    # Usage: python [--show] [--find-vars] zxbasic.py [filename]
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
     parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse")
+    parser.add_argument("--show", action="store_true", help="Show the parsed program")
+    parser.add_argument("--minimize", action="store_true", help="Minimize the variable names")
+    parser.add_argument("--find-vars", action="store_true", help="Find all the variables in the program")
     args = parser.parse_args()
+
+    if not any((args.show, args.find_vars)):
+        args.show = True
+
+    if not args.filename:
+        args.filename = "/dev/stdin"
 
     try:
         # # Parse the program
@@ -418,13 +793,14 @@ if __name__ == '__main__':
         # print("Program parsed successfully!")
         program = parse_file(args.filename)
 
-        # Basic model inspection
-        for line in program.lines:
-            if line.line_number:
-                print(f"{line.line_number}\t", end="")
-            else:
-                print("\t", end="")
-            print(": ".join(str(stmt) for stmt in line.statements))
+        if args.find_vars:
+            # print(" ".join(find_variables(program)))
+            # Dump as JSON
+            print(json.dumps(find_variables(program), indent=4))
+        if args.minimize:
+            minimize_variables(program)
+        if args.show:
+            list_program(program)
 
     except Exception as e:
         print(f"Parse error: {e}")
