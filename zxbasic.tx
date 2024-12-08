@@ -114,15 +114,16 @@ FunctionName: 'ABS' | 'ACS' | 'ASN' | 'ATN' | 'COS' | 'EXP' | 'INT' |
 TwoArgName: 'ATTR' | 'POINT' | 'SCREEN$';
 TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
 PiValue: 'PI';
-SpecialFn: TwoArgFn | PiValue;
+BinValue: 'BIN' digits=/[01]+/;
+SpecialFn: TwoArgFn | PiValue | BinValue;
 
 // Primary expressions
-Primary: NUMBER | STRING | ArrayRef | Variable | '(' Expression ')';
+Primary: NUMBER | STRING | VarDest | '(' Expression ')';
 
 // Array references
 ArrayRef: name=/[A-Z]\$?/ '(' subscripts+=SliceExpression[','] ')';
 
-VarDest: Variable | ArrayRef;
+VarDest: ArrayRef | Variable;
 
 Slice: 
     'TO' max=Expression |                  // From start: A$(TO 10)
@@ -159,8 +160,8 @@ Cat: 'CAT';
 // ==================================
 // Simple CLASS_06 - Single numeric expression
 // ==================================
-Goto: 'GOTO' expr=Expression;
-Gosub: 'GOSUB' expr=Expression;
+Goto: 'GOTO' expr=Expression | 'GO TO' expr=Expression;
+Gosub: 'GOSUB' expr=Expression | 'GO SUB' expr=Expression;
 Restore: 'RESTORE' expr=Expression;
 Pause: 'PAUSE' expr=Expression;
 Border: 'BORDER' expr=Expression;
