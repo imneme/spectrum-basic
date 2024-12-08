@@ -118,7 +118,10 @@ BinValue: 'BIN' digits=/[01]+/;
 SpecialFn: TwoArgFn | PiValue | BinValue;
 
 // Primary expressions
-Primary: NUMBER | STRING | VarDest | '(' Expression ')';
+Primary: Number | String | VarDest | '(' Expression ')';
+
+Number: value=NUMBER;
+String: value=/"(?:[^"\n]|"")*"/;
 
 // Array references
 ArrayRef: name=/[A-Z]\$?/ '(' subscripts+=SliceExpression[','] ')';

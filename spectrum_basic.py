@@ -2,16 +2,6 @@ from textx import metamodel_from_file
 import functools
 from os.path import dirname, join
 
-
-def spectrum_repr(value):
-    """Print a value that can be parsed on a ZX Spectrum"""
-    # We mostly need to worry about strings, since they need to be 
-    # double-quoted and any quotes inside the string need to be escaped
-    # BASIC-style
-    if isinstance(value, str):
-        doubled = value.replace('"', '""')
-        return f'"{doubled}"'
-    return repr(value)
 # The ZX Spectrum BASIC Grammar is found in spectrum_basic.tx
 
 # Operator precedence table (higher number = tighter binding)
@@ -80,8 +70,8 @@ class BuiltIn(Statement):
     def __str__(self):
         if not self.args:
             return self.action
-            
-        present_args = [spectrum_repr(arg) for arg in self.args if arg is not None]
+
+        present_args = [str(arg) for arg in self.args if arg is not None]
         if self.is_expr:
             if len(present_args) == 1:
                 # For single argument function-like expressions, only add parens if needed
@@ -112,7 +102,7 @@ class ColouredBuiltin(BuiltIn):
         if self.args:
             if self.colours:
                 parts.append(" ")
-            parts.append(self.sep.join(map(spectrum_repr, self.args)))
+            parts.append(self.sep.join(map(str, self.args)))
         return "".join(parts)
 
 class Let(Statement):
@@ -123,7 +113,7 @@ class Let(Statement):
         self.expr = expr
     
     def __str__(self):
-        return f"LET {self.var} = {spectrum_repr(self.expr)}"
+        return f"LET {self.var} = {self.expr}"
 
 class For(Statement):
     """FOR loop statement"""
@@ -136,8 +126,8 @@ class For(Statement):
     
     def __str__(self):
         if self.step:
-            return f"FOR {self.var} = {spectrum_repr(self.expr)} TO {spectrum_repr(self.end)} STEP {spectrum_repr(self.step)}"
-        return f"FOR {self.var} = {spectrum_repr(self.start)} TO {spectrum_repr(self.end)}"
+            return f"FOR {self.var} = {self.expr} TO {self.end} STEP {self.step}"
+        return f"FOR {self.var} = {self.start} TO {self.end}"
                                        
 class Next(Statement):
     """NEXT statement"""
@@ -157,7 +147,7 @@ class If(Statement):
     
     def __str__(self):
         stmts = ": ".join(str(stmt) for stmt in self.statements)
-        return f"IF {spectrum_repr(self.condition)} THEN {stmts}"
+        return f"IF {self.condition} THEN {stmts}"
 
 class Dim(Statement):
     """Array dimension statement"""
@@ -181,8 +171,8 @@ class DefFn(Statement):
     def __str__(self):
         if self.params:
             params = ", ".join(str(p) for p in self.params)
-            return f"DEF FN {self.name}({params}) = {spectrum_repr(self.expr)}"
-        return f"DEF FN {self.name} = {spectrum_repr(self.expr)}"
+            return f"DEF FN {self.name}({params}) = {self.expr}"
+        return f"DEF FN {self.name} = {self.expr}"
 
 class PrintItem:
     """Represents items in PRINT statement"""
@@ -192,7 +182,7 @@ class PrintItem:
         self.separator = separator
     
     def __str__(self):
-        valrepr = spectrum_repr(self.value) if self.value is not None else ""
+        valrepr = str(self.value) if self.value is not None else ""
         if self.separator:
             return f"{valrepr}{self.separator}"
         return valrepr
@@ -215,6 +205,25 @@ class Variable(Expression):
     
     def __str__(self):
         return self.name
+    
+class Number(Expression):
+    """Numeric value"""
+    def __init__(self, parent, value):
+        self.parent = parent
+        self.value = value
+    
+    def __str__(self):
+        return str(self.value)
+
+class String(Expression):
+    """String value"""
+    def __init__(self, parent, value):
+        self.parent = parent
+        self.value = value[1:-1]
+    
+    def __str__(self):
+        doubled = self.value.replace('"', '""')
+        return f'"{doubled}"'
 
 class BinValue(Expression):
     """Binary value"""
@@ -275,7 +284,7 @@ META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
-                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Slice])
+                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Slice, Number, String])
     
 def get_name(obj):
     """Get the name of an AST object"""
