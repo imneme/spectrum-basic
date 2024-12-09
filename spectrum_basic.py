@@ -230,19 +230,19 @@ class If(Statement):
 
 class Dim(Statement):
     """Array dimension statement"""
-    def __init__(self, parent, var, dimensions):
+    def __init__(self, parent, name, dims):
         self.parent = parent
-        self.var = var
-        self.dimensions = dimensions
+        self.name = name
+        self.dimensions = dims
     
     def __str__(self):
         dims = ", ".join(str(d) for d in self.dimensions)
-        return f"DIM {self.var}({dims})"
+        return f"DIM {self.name}({dims})"
     
     def walk(self):
         """Walk method for DIM statements"""
         if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.var)
+        yield from walk(self.name)
         yield from walk(self.dimensions)
         yield (Walk.LEAVING, self)
 
@@ -385,7 +385,7 @@ class Fn(Expression):
     
     def __str__(self):
         arg_strs = ", ".join(str(arg) for arg in self.args)
-        return f"{self.name}({arg_strs})"
+        return f"FN {self.name}({arg_strs})"
     
     def walk(self):
         """Walk method for FN calls"""
