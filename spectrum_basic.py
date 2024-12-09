@@ -33,6 +33,7 @@ from textx import metamodel_from_file
 import functools
 from os.path import dirname, join
 from enum import Enum, auto
+import re
 
 class Walk(Enum):
     ENTERING = auto()
@@ -116,14 +117,79 @@ def walk(obj):
 
 # Classes for the BASIC language
 
-class Statement:
-    """Base class for all BASIC statements"""
+class ASTNode:
+    """Base class for all (non-textx) AST nodes"""
     def __repr__(self):
         return str(self)
     
     def walk(self):
-        """Base walk method for all statements"""
+        """Base walk method for all expressions"""
         yield (Walk.VISITING, self)
+
+# Rather than hand-code all the different expression classes, we
+# instead generate them programmatically.  The easiest way to do
+# this is with eval.
+#
+# We do do some classes by hand, so if you want to know what kind
+# of code this function is making, look at the hand-coded classes
+# first.
+
+def gen_class(name, fields=[], keyword=None, format=None, init=None, is_leaf=False, raw_fields=None, no_parent=False, dont_code=[], xcode="", superclass=None, globals=globals(), locals=locals()):
+    """Generate an AST class with given fields"""
+
+    keyword = keyword or name.upper()
+    raw_fields = raw_fields or fields
+    init = init or [None] * len(fields)
+    init = {name: code or raw_name for name, raw_name, code in zip(fields, raw_fields, init)}
+
+    # Note, format of the format string doesn't use `self.` on fields,
+    # we add that automagically
+
+    # Format of lines: Nesting of the list of strings is used for indentation
+    lines = [f"class {name}({superclass or "ASTNode"}):"]
+    if not "__init__" in dont_code:
+        # First, code for the __init__ method
+        body = [] if no_parent else [f"self.parent = parent"]
+        body += [f"self.{field} = {init[field]}" for field in fields]
+        func = [f"def __init__(self{'' if no_parent else ', parent'}, {', '.join(raw_fields)}):", body]
+        lines.append(func)
+    if not "__str__" in dont_code:
+        # Then, code for the __str__ method
+        if format is None:   # Create with fields (without self)
+            format = f"{keyword} {' '.join(['{' + f + '}' for f in fields])}"
+        # Fix the format to add self. to each field
+        format = re.sub(r"\b(" + "|".join(fields) + r")\b", r"self.\1", format)
+        body = [f"return f\"{format}\""]
+        func = [f"def __str__(self):", body]
+        lines.append(func)
+    if not "__repr__" in dont_code:
+        # Finally, code for the walk method, two kinds of walk methods, leaf
+        # and non-leaf
+        if is_leaf:
+            body = [f"yield (Walk.VISITING, self)"]
+        else:
+            body = [f"if (yield (Walk.ENTERING, self)) == Walk.SKIP: return"]
+            body += [f"yield from walk(self.{field})" for field in fields]
+            body.append(f"yield (Walk.LEAVING, self)")
+        func = [f"def walk(self):", body]
+        lines.append(func)
+
+    if xcode:
+        lines.append(xcode)
+    text = []
+    def flatten(lst, indent=0):
+        for item in lst:
+            if isinstance(item, list):
+                flatten(item, indent+1)
+            else:
+                text.append("    " * indent + item)
+    flatten(lines)
+    text = "\n".join(text)
+    exec(text, globals, locals)
+
+class Statement(ASTNode):
+    """Base class for all BASIC statements"""
+    pass
 
 class BuiltIn(Statement):
     """Represents simple built-in commands with fixed argument patterns"""
@@ -185,274 +251,45 @@ class ColouredBuiltin(BuiltIn):
         yield from walk(self.args)
         yield (Walk.LEAVING, self)
 
-class Let(Statement):
-    """Assignment statement"""
-    def __init__(self, parent, var, expr):
-        self.parent = parent
-        self.var = var
-        self.expr = expr
-    
-    def __str__(self):
-        return f"LET {self.var} = {self.expr}"
-    
-    def walk(self):
-        """Walk method for LET statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.var)
-        yield from walk(self.expr)
-        yield (Walk.LEAVING, self)
+def nstr(obj):
+    "Like str, but returns an empty string for None"
+    return str(obj) if obj is not None else ""
 
-class For(Statement):
-    """FOR loop statement"""
-    def __init__(self, parent, var, start, end, step=None):
-        self.parent = parent
-        self.var = var
-        self.start = start
-        self.end = end
-        self.step = step
-    
-    def __str__(self):
-        if self.step:
-            return f"FOR {self.var} = {self.expr} TO {self.end} STEP {self.step}"
-        return f"FOR {self.var} = {self.start} TO {self.end}"
-    
-    def walk(self):
-        """Walk method for FOR statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.var)
-        yield from walk(self.start)
-        yield from walk(self.end)
-        if self.step:
-            yield from walk(self.step)
-        yield (Walk.LEAVING, self)
-                                       
-class Next(Statement):
-    """NEXT statement"""
-    def __init__(self, parent, var):
-        self.parent = parent
-        self.var = var
-    
-    def __str__(self):
-        return f"NEXT {self.var}"
-    
-    def walk(self):
-        """Walk method for NEXT statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.var)
-        yield (Walk.LEAVING, self)
+def speccy_quote(s):
+    """Quote a string in ZX Spectrum BASIC format"""
+    doubled = s.replace('"', '""')
+    return f'"{doubled}"'
 
-class If(Statement):
-    """IF statement with statement list"""
-    def __init__(self, parent, condition, statements):
-        self.parent = parent
-        self.condition = condition
-        self.statements = statements
-    
-    def __str__(self):
-        stmts = ": ".join(str(stmt) for stmt in self.statements)
-        return f"IF {self.condition} THEN {stmts}"
-    
-    def walk(self):
-        """Walk method for IF statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.condition)
-        yield from walk(self.statements)
-        yield (Walk.LEAVING, self)
-
-class Dim(Statement):
-    """Array dimension statement"""
-    def __init__(self, parent, name, dims):
-        self.parent = parent
-        self.name = name
-        self.dimensions = dims
-    
-    def __str__(self):
-        dims = ", ".join(str(d) for d in self.dimensions)
-        return f"DIM {self.name}({dims})"
-    
-    def walk(self):
-        """Walk method for DIM statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.name)
-        yield from walk(self.dimensions)
-        yield (Walk.LEAVING, self)
-
-class DefFn(Statement):
-    """Function definition"""
-    def __init__(self, parent, name, params, expr):
-        self.parent = parent
-        self.name = name
-        self.params = params or []
-        self.expr = expr
-    
-    def __str__(self):
-        if self.params:
-            params = ", ".join(str(p) for p in self.params)
-            return f"DEF FN {self.name}({params}) = {self.expr}"
-        return f"DEF FN {self.name} = {self.expr}"
-    
-    def walk(self):
-        """Walk method for DEF FN statements"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.params)
-        yield from walk(self.expr)
-        yield (Walk.LEAVING, self)
-
-class PrintItem:
-    """Represents items in PRINT statement"""
-    def __init__(self, value, separator=None):
-        # Does not track its parent
-        self.value = value
-        self.separator = separator
-    
-    def __str__(self):
-        valrepr = str(self.value) if self.value is not None else ""
-        if self.separator:
-            return f"{valrepr}{self.separator}"
-        return valrepr
-    
-    def __repr__(self):
-        return str(self)
-    
-    def walk(self):
-        """Walk method for PRINT items"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.value)
-        yield from walk(self.separator)
-        yield (Walk.LEAVING, self)
-
-class Rem(Statement):
-    """REM statement"""
-    def __init__(self, parent, comment):
-        self.parent = parent
-        self.comment = comment
-    
-    def __str__(self):
-        return f"REM {self.comment}"
-
-class Label(Statement):  # Arguably not really a statement
-    """Label for GOTO/GOSUB"""
-    def __init__(self, parent, name):
-        self.parent = parent
-        self.name = name[1:]
-    
-    def __str__(self):
-        return f"@{self.name}"
+gen_class("Let", ["var", "expr"], format="LET {var} = {expr}", superclass="Statement")
+gen_class("For", ["var", "start", "end", "step"], format="FOR {var} = {start} TO {end}{f' STEP {step}' if step else ''}", superclass="Statement")
+gen_class("Next", ["var"], superclass="Statement")
+gen_class("If", ["condition", "statements"], format="IF {condition} THEN {': '.join(str(stmt) for stmt in statements)}", superclass="Statement")
+gen_class("Dim", ["name", "dims"], format="DIM {name}({', '.join(str(d) for d in dims)})", superclass="Statement")
+gen_class("DefFn", ["name", "params", "expr"], format="DEF FN {name}({', '.join(str(p) for p in params)}) = {expr}")
+gen_class("PrintItem", ["value", "sep"], format="{nstr(value)}{nstr(sep)}", no_parent=True)
+gen_class("Rem", ["comment"], is_leaf=True, format="REM {comment}", superclass="Statement")
+gen_class("Label", ["name"], is_leaf=True, format="@{name}", init=["name[1:]"])
 
 # Expression classes
 
-class Expression:
-    """Base class for all expressions"""
-    def __repr__(self):
-        return str(self)
-    
-    def walk(self):
-        """Base walk method for all expressions"""
-        yield (Walk.VISITING, self)
+class Expression(ASTNode):
+    pass
 
-class Variable(Expression):
-    """Variable reference"""
-    def __init__(self, parent, name):
-        self.parent = parent
-        self.name = name.replace(" ", "").replace("\t", "")
-    
-    def __str__(self):
-        return self.name
-
-class Number(Expression):
-    """Numeric value"""
-    def __init__(self, parent, value):
-        self.parent = parent
-        self.value = value
-    
-    def __str__(self):
-        return str(self.value)
-
-class String(Expression):
-    """String value"""
-    def __init__(self, parent, value):
-        self.parent = parent
-        self.value = value[1:-1]
-    
-    def __str__(self):
-        doubled = self.value.replace('"', '""')
-        return f'"{doubled}"'
-
-class BinValue(Expression):
-    """Binary value"""
-    def __init__(self, parent, digits):
-        self.parent = parent
-        self.digits = digits
-    
-    def __str__(self):
-        return f"BIN {self.digits}"
-
-class ArrayRef(Expression):
-    """Array reference"""
-    def __init__(self, parent, name, subscripts):
-        self.parent = parent
-        self.name = name
-        self.subscripts = subscripts
-    
-    def __str__(self):
-        subscripts = ", ".join(str(s) for s in self.subscripts)
-        return f"{self.name}({subscripts})"
-    
-    def walk(self):
-        """Walk method for array references"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.name)
-        yield from walk(self.subscripts)
-        yield (Walk.LEAVING, self)
-
-# Fn: 'FN' name=Variable '(' args*=Expression[','] ')';
-
-class Fn(Expression):
-    """FN call (to function defined with DEF FN)"""
-    def __init__(self, parent, name, args):
-        self.parent = parent
-        self.name = name
-        self.args = args
-    
-    def __str__(self):
-        arg_strs = ", ".join(str(arg) for arg in self.args)
-        return f"FN {self.name}({arg_strs})"
-    
-    def walk(self):
-        """Walk method for FN calls"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.name)
-        yield from walk(self.args)
-        yield (Walk.LEAVING, self)
-
-class Slice(Expression):
-    """Array slice expression"""
-    def __init__(self, parent, min=None, max=None):
-        self.parent = parent
-        self.min = min
-        self.max = max
-    
+gen_class("Variable", ["name"], is_leaf=True, init=["name.replace(' ', '').replace('\\t', '')"], format="{name}", superclass="Expression")
+gen_class("Number", ["value"], format="{value}", is_leaf=True, superclass="Expression")
+gen_class("String", ["value"], format="{speccy_quote(value)}", is_leaf=True, init=["value[1:-1]"], superclass="Expression")
+gen_class("BinValue", ["digits"], keyword="BIN", is_leaf=True)
+gen_class("ArrayRef", ["name", "subscripts"], format="{name}({', '.join(str(s) for s in subscripts)})")
+gen_class("Fn", ["name", "args"], format="FN {name}({', '.join(str(arg) for arg in args)})")
+gen_class("Slice", ["min", "max"], dont_code=["__str__"], xcode="""
     def __str__(self):
         if self.min is None:
             return f"TO {self.max}"
         if self.max is None:
             return f"{self.min} TO"
         return f"{self.min} TO {self.max}"
-    
-    def walk(self):
-        """Walk method for array slices"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.min)
-        yield from walk(self.max)
-        yield (Walk.LEAVING, self)
-
-class BinaryOp(Expression):
-    """Binary operation with smart string formatting"""
-    def __init__(self, op, left, right):
-        self.op = op
-        self.lhs = left
-        self.rhs = right
-    
+""")
+gen_class("BinaryOp", ["op", "lhs", "rhs"], no_parent=True,dont_code="__str__", xcode="""
     def __str__(self):
         # Format left side
         lhs_str = str(self.lhs)
@@ -465,13 +302,7 @@ class BinaryOp(Expression):
             rhs_str = f"({rhs_str})"
             
         return f"{lhs_str} {self.op} {rhs_str}"
-    
-    def walk(self):
-        """Walk method for binary operations"""
-        if (yield (Walk.ENTERING, self)) == Walk.SKIP: return
-        yield from walk(self.lhs)
-        yield from walk(self.rhs)
-        yield (Walk.LEAVING, self)
+""")
 
 # Find spectrum_basic.tx in the same directory as this script
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")

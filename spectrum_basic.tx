@@ -76,10 +76,10 @@ Expression: OrExpr;
 
 // Precedence levels from low (2) to high (10)
 OrExpr: first=AndExpr rest*=OrOpExpr;
-OrOpExpr: op=/\bOR\b/ expr=AndExpr;
+OrOpExpr: op=/OR\b/ expr=AndExpr;
 
 AndExpr: first=CompareExpr rest*=AndOpExpr;
-AndOpExpr: op=/\bAND\b/ expr=CompareExpr;
+AndOpExpr: op=/AND\b/ expr=CompareExpr;
 
 // All comparison operators have same precedence (5)
 CompareExpr: first=AddExpr rest*=CompareOpExpr;
@@ -108,16 +108,16 @@ FunctionExpr: Function | SpecialFn | Primary;
 
 // Functions (parentheses optional unless needed for precedence)
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
-FunctionName: /\bABS\b/ | /\bACS\b/ | /\bASN\b/ | /\bATN\b/ | /\bCOS\b/ | /\bEXP\b/ | /\bINT\b/ | 
-             /\bLN\b/ | /\bSGN\b/ | /\bSIN\b/ | /\bSQR\b/ | /\bTAN\b/ | /\bUSR\b/ | /\bLEN\b/ |
-             /\bCODE\b/ | /\bVAL\b/ | 'CHR$' | 'STR$' | 'VAL$' | /\bNOT\b/ | '-';
+FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ | 
+             /LN\b/ | /SGN\b/ | /SIN\b/ | /SQR\b/ | /TAN\b/ | /USR\b/ | /LEN\b/ |
+             /CODE\b/ | /VAL\b/ | 'CHR$' | 'STR$' | 'VAL$' | /NOT\b/ | '-';
 
 // Functions with multiple arguments
-TwoArgName: /\bATTR\b/ | /\bPOINT\b/ | 'SCREEN$';
+TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';
 TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
-PiValue: /\bPI\b/;
-BinValue: /\bBIN\b/ digits=/[01]+/;
-Fn: /\bFN\b/ name=VarSymbol '(' args*=Expression[','] ')';
+PiValue: /PI\b/;
+BinValue: /BIN\b/ digits=/[01]+/;
+Fn: /FN\b/ name=VarSymbol '(' args*=Expression[','] ')';
 SpecialFn: TwoArgFn | PiValue | BinValue | Fn;
 
 // Primary expressions
@@ -133,9 +133,9 @@ VarSymbol: /[A-Z][ \tA-Z0-9]*\$?/;
 VarDest: ArrayRef | Variable;
 
 Slice: 
-    /\bTO\b/ max=Expression |                  // From start: A$(TO 10)
-    min=Expression /\bTO\b/ max=Expression |   // Range: A$(2 TO 10)
-    min=Expression /\bTO\b/;                   // To end: A$(2 TO)
+    /TO\b/ max=Expression |                  // From start: A$(TO 10)
+    min=Expression /TO\b/ max=Expression |   // Range: A$(2 TO 10)
+    min=Expression /TO\b/;                   // To end: A$(2 TO)
 
 SliceExpression: Slice | Expression;
 
@@ -153,102 +153,102 @@ Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
 // ==================================
 // CLASS_00 - No operands
 // ==================================
-New: /\bNEW\b/;
-Stop: /\bSTOP\b/;
-Return: /\bRETURN\b/;
-Continue: /\bCONTINUE\b/;
-Copy: /\bCOPY\b/;
-Cls: /\bCLS\b/;
-Cat: /\bCAT\b/;
+New: /NEW\b/;
+Stop: /STOP\b/;
+Return: /RETURN\b/;
+Continue: /CONTINUE\b/;
+Copy: /COPY\b/;
+Cls: /CLS\b/;
+Cat: /CAT\b/;
 
 // ==================================
 // Simple CLASS_06 - Single numeric expression
 // ==================================
-Goto: /\bGOTO\b/ expr=Expression | 'GO TO' expr=Expression;
-Gosub: /\bGOSUB\b/ expr=Expression | 'GO SUB' expr=Expression;
-Restore: /\bRESTORE\b/ expr=Expression;
-Pause: /\bPAUSE\b/ expr=Expression;
-Border: /\bBORDER\b/ expr=Expression;
+Goto: /GOTO\b/ expr=Expression | 'GO TO' expr=Expression;
+Gosub: /GOSUB\b/ expr=Expression | 'GO SUB' expr=Expression;
+Restore: /RESTORE\b/ expr=Expression;
+Pause: /PAUSE\b/ expr=Expression;
+Border: /BORDER\b/ expr=Expression;
 
 // ==================================
 // CLASS_03 - Optional numeric expression
 // ==================================
-Run: /\bRUN\b/ (expr=Expression)?;
-Clear: /\bCLEAR\b/ (expr=Expression)?;
-Randomize: /\bRANDOMIZE\b/ (expr=Expression)?;
+Run: /RUN\b/ (expr=Expression)?;
+Clear: /CLEAR\b/ (expr=Expression)?;
+Randomize: /RANDOMIZE\b/ (expr=Expression)?;
 
 // ==================================
 // CLASS_08 - Two numeric expressions
 // ==================================
-Beep: /\bBEEP\b/ expr1=Expression ',' expr2=Expression;
-Out: /\bOUT\b/ expr1=Expression ',' expr2=Expression;
-Poke: /\bPOKE\b/ expr1=Expression ',' expr2=Expression;
+Beep: /BEEP\b/ expr1=Expression ',' expr2=Expression;
+Out: /OUT\b/ expr1=Expression ',' expr2=Expression;
+Poke: /POKE\b/ expr1=Expression ',' expr2=Expression;
 
 // ==================================
 // Variable and assignment statements
 // ==================================
-Let: /\bLET\b/ var=VarDest '=' expr=Expression;
-Read: /\bREAD\b/ vars+=VarDest[','];
-Data: /\bDATA\b/ items+=Expression[','];
-Dim: /\bDIM\b/ name=VarSymbol '(' dims+=Expression[','] ')';
+Let: /LET\b/ var=VarDest '=' expr=Expression;
+Read: /READ\b/ vars+=VarDest[','];
+Data: /DATA\b/ items+=Expression[','];
+Dim: /DIM\b/ name=VarSymbol '(' dims+=Expression[','] ')';
 
 // ==================================
 // Loop and control statements
 // ==================================
-For: /\bFOR\b/ var=Variable '=' start=Expression /\bTO\b/ end=Expression (/\bSTEP\b/ step=Expression)?;
-Next: /\bNEXT\b/ var=Variable;
-If: /\bIF\b/ condition=Expression /\bTHEN\b/ statements+=Statement[':'];
+For: /FOR\b/ var=Variable '=' start=Expression /TO\b/ end=Expression (/STEP\b/ step=Expression)?;
+Next: /NEXT\b/ var=Variable;
+If: /IF\b/ condition=Expression /THEN\b/ statements+=Statement[':'];
 
 // ==================================
 // Colour control statements (CLASS_07)
 // ==================================
-ColourOp: /\bINK\b/ | /\bPAPER\b/ | /\bFLASH\b/ | /\bBRIGHT\b/ | /\bINVERSE\b/ | /\bOVER\b/;
+ColourOp: /INK\b/ | /PAPER\b/ | /FLASH\b/ | /BRIGHT\b/ | /INVERSE\b/ | /OVER\b/;
 ColourParam: name=ColourOp expr=Expression;
 ColourStmt: ColourParam;
 
 // ==================================
 // Graphics statements (CLASS_09)
 // ==================================
-Plot: /\bPLOT\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression;
-Draw: /\bDRAW\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression (',' expr3=Expression)?;
-Circle: /\bCIRCLE\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression ',' expr3=Expression;
+Plot: /PLOT\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression;
+Draw: /DRAW\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression (',' expr3=Expression)?;
+Circle: /CIRCLE\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=Expression ',' expr3=Expression;
 
 // ==================================
 // Print and Input statements (CLASS_05)
 // ==================================
 PrintItem: ColourParam | At | Tab | Expression;
-At: /\bAT\b/ expr1=Expression ',' expr2=Expression;
-Tab: /\bTAB\b/ expr=Expression;
+At: /AT\b/ expr1=Expression ',' expr2=Expression;
+Tab: /TAB\b/ expr=Expression;
 PrintSeparator: ',' | ';' | '\'';
 PrintSeparatedItem: item=PrintItem? sep=PrintSeparator;
-Print: /\bPRINT\b/ items*=PrintSeparatedItem (final=PrintItem)?;
-Lprint: /\bLPRINT\b/ items*=PrintItem[','];
+Print: /PRINT\b/ items*=PrintSeparatedItem (final=PrintItem)?;
+Lprint: /LPRINT\b/ items*=PrintItem[','];
 
 InputItem: ColourParam | At | Tab | Line | VarDest | Expression;
 PrintSeparator: ',' | ';' | '\'';
 InputSeparatedItem: item=InputItem? sep=PrintSeparator;
-Input: /\bINPUT\b/ items*=InputSeparatedItem (final=InputItem)?;
+Input: /INPUT\b/ items*=InputSeparatedItem (final=InputItem)?;
 
-Line: /\bLINE\b/ expr=Expression;
+Line: /LINE\b/ expr=Expression;
 
 // ==================================
 // Cassette/Storage statements (CLASS_0B)
 // ==================================
-SaveMode: Line | /\bCODE\b/ addr=Expression (',' length=Expression)? | /\bDATA\b/ var=Variable | 'SCREEN$';
-Save: /\bSAVE\b/ name=Expression (mode=SaveMode)?;
-Load: /\bLOAD\b/ name=Expression (mode=SaveMode)?;
-Verify: /\bVERIFY\b/ name=Expression (mode=SaveMode)?;
-Merge: /\bMERGE\b/ name=Expression;
+SaveMode: Line | /CODE\b/ addr=Expression (',' length=Expression)? | /DATA\b/ var=Variable | 'SCREEN$';
+Save: /SAVE\b/ name=Expression (mode=SaveMode)?;
+Load: /LOAD\b/ name=Expression (mode=SaveMode)?;
+Verify: /VERIFY\b/ name=Expression (mode=SaveMode)?;
+Merge: /MERGE\b/ name=Expression;
 
 // ==================================
 // User-defined functions
 // ==================================
-DefFn: /\bDEF\b/ /\bFN\b/ name=VarSymbol ('(' params+=Variable[','] ')')? '=' expr=Expression;
+DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params+=Variable[','] ')')? '=' expr=Expression;
 
 // ==================================
 // Rem (special case - consumes to EOL)
 // ==================================
-Rem: /\bREM\b/ comment=/[^\n]*/;
+Rem: /REM\b/ comment=/[^\n]*/;
 
 // ==================================
 // Additions to the ZX Spectrum BASIC grammar
