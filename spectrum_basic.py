@@ -588,8 +588,16 @@ def find_variables(program):
             varDict = vars
         return varDict.setdefault(kind, {}).setdefault(lowname, var)
     def vars_to_lists(vars):
-        return {kind: sorted(vars[kind].values()) if kind != "fn-info" else vars[kind]
-                for kind in vars}
+        def process_kind(kind):
+            match kind:
+                case "fn-info":         # fn-info is not a simple mapping
+                    return vars[kind]
+                case "param":          # leave params in order encountered
+                    return vars[kind].values()
+                case _:                 # sort the rest
+                    return sorted(vars[kind].values())
+        return {kind: process_kind(kind) for kind in vars}
+    
     stack = []
     for event, obj in walk(program):
         if event == Walk.VISITING:
