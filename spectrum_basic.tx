@@ -1,15 +1,18 @@
+// ZX Spectrum BASIC expression grammar
+//
+// Copyright (c) 2024 Melissa E. O'Neill. MIT License. NO WARRANTY.
+
 // Basic program structure
 Program: /\s*/ lines*=SourceLine[/\n\s*/] /\s*/;
 SourceLine: (line_number=INT)? (label=Label ':')? statements*=Statement[':'];
 
 // =====================================
-// Syntactic Class Patterns
+// Syntactic Class Patterns, as described in the ROM
 // =====================================
 
 // CLASS_00: No operands
 // Usage: Just the keyword alone
 // Example: NEW, STOP, RETURN
-// Pattern: /\bKEYWORD\b/
 
 // CLASS_01: Variable
 // Usage: Requires a variable name
@@ -246,4 +249,8 @@ DefFn: /\bDEF\b/ /\bFN\b/ name=VarSymbol ('(' params+=Variable[','] ')')? '=' ex
 // Rem (special case - consumes to EOL)
 // ==================================
 Rem: /\bREM\b/ comment=/[^\n]*/;
+
+// ==================================
+// Additions to the ZX Spectrum BASIC grammar
+// ==================================
 Label: name=/@[A-Z][A-Z0-9_]*/;
