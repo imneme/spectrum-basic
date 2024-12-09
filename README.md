@@ -80,6 +80,77 @@ Labels can be used in:
 - Arithmetic expressions (e.g., `(@end - @start)/10`)
 - Any line of code (numbered or unnumbered)
 
+## Working with the AST
+
+If you want to analyze or transform BASIC programs, you'll need to work with the Abstract Syntax Tree (AST) that represents the program's structure. This section provides an overview of the AST nodes and how to traverse them.
+
+### AST Walking
+
+The AST can be traversed using the `walk()` generator, which yields tuples of `(event, node)`. Events are:
+
+```python
+class Walk(Enum):
+    ENTERING = auto()  # Entering a compound node
+    VISITING = auto()  # At a leaf node or simple value
+    LEAVING  = auto()  # Leaving a compound node
+```
+
+Example usage:
+
+```python
+def find_variables(program):
+    """Find all variables in a program"""
+    variables = set()
+    for event, obj in walk(program):
+        if event == Walk.VISITING and isinstance(obj, Variable):
+            variables.add(obj.name)
+    return sorted(variables)
+```
+
+You can control traversal by sending `Walk.SKIP` back to the generator to skip processing a node's children.  You can also just abandon the generator at any time.
+
+### Key AST Nodes
+
+Common patterns for matching AST nodes:
+
+```python
+# Basic nodes
+Variable(name=str)          # Variable reference (e.g., "A" or "A$")
+Number(value=int|float)     # Numeric literal
+Label(name=str)             # Label reference (e.g., "@loop")
+
+# Built-in commands/functions
+BuiltIn(action=str,         # Command name (e.g., "PRINT", "GOTO")
+        args=tuple)         # Command arguments
+
+# Special cases
+ColoredBuiltin(action=str,  # Graphics commands (PLOT, DRAW, CIRCLE)
+              colors=list,  # Color parameters
+              args=tuple)   # Coordinates/dimensions
+
+# Program structure
+Program(lines=list)         # Complete program
+SourceLine(                 # Single line of code
+    line_number=int|None,
+    label=Label|None,
+    statements=list)
+```
+
+(Note: Currently `Program` and `SourceLine` are textX automagic classes rather than custom AST nodes. This only matters if you want to use them in pattern matching, which is unlikely.)
+
+Example pattern matching:
+
+```python
+match obj:
+    case BuiltIn(action="GOTO", args=[target]) if isinstance(target, Number):
+        # Handle simple GOTO with numeric line number
+        line_num = target.value
+        ...
+    case Variable(name=name) if name.endswith("$"):
+        # Handle string variable
+        ...
+```
+
 ## License
 
 MIT License. Copyright (c) 2024 Melissa O'Neill
