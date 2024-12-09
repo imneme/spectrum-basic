@@ -1,3 +1,4 @@
+import textx
 from textx import metamodel_from_file
 import functools
 from os.path import dirname, join
@@ -842,8 +843,13 @@ def renumber(program, start_line=10, increment=10):
     
     return program
 
-def number_lines(program, remove_labels=True, default_increment=10):
+def number_lines(program, remove_labels=True, default_increment=10, start_line=None):
     """Number any unnumbered lines and optionally remove labels"""
+    # If a start line is specified, and the first line is not numbered
+    # edit the first line to use the start line
+    if start_line is not None and program.lines and not program.lines[0].line_number:
+        program.lines[0].line_number = start_line
+
     # First pass: build line number mapping for all lines
     line_map = {}  # Maps labels to line numbers
     numbered_lines = []  # List of (position, line_num, is_blank) for existing numbers
@@ -921,16 +927,16 @@ if __name__ == '__main__':
     import sys
     import json
 
-    # Usage: python [--show] [--find-vars] zxbasic.py [filename]
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
-    parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse")
+    parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse (omit to read stdin)")
     parser.add_argument("--show", action="store_true", help="Show the parsed program")
-    # --renumber takes two optional arguments for start line and increment, defaulting to 10 and 10, use --renumber 100,5 to start at 100 in steps of 5, and --renumber 100 to start at 100 in steps of 10
     parser.add_argument("--number", action="store_true", help="Number any unnumbered lines")
     parser.add_argument("--delabel", action="store_true", help="Number any unnumbered lines and remove labels")
-    parser.add_argument("--renumber", metavar="start[,increment]", help="Renumber the program")
-    parser.add_argument("--minimize", action="store_true", help="Minimize the variable names")
-    parser.add_argument("--find-vars", action="store_true", help="Find all the variables in the program")
+    parser.add_argument("--renumber", action="store_true", help="Renumber the program")
+    parser.add_argument("--start-line", help="Starting line number for renumbering, numbering and delabeling", type=int, default=10)
+    parser.add_argument("--increment", help="Increment for renumbering, numbering and delabeling", type=int, default=10)
+    parser.add_argument("--minimize", action="store_true", help="Minimize(/legalize) the variable names")
+    parser.add_argument("--find-vars", action="store_true", help="Find all the variables in the program and dump them as JSON")
     args = parser.parse_args()
 
     if not any((args.show, args.find_vars)):
@@ -939,37 +945,34 @@ if __name__ == '__main__':
     if not args.filename:
         args.filename = "/dev/stdin"
 
-    # Check the renumber argument and break out the start and increment
-    if args.renumber:
-        parts = args.renumber.split(",")
-        if len(parts) > 2:
-            print("Invalid renumber argument")
-            sys.exit(1)
-        start_line = int(parts[0])
-        if len(parts) == 2:
-            increment = int(parts[1])
-        else:
-            increment = 10
+    # Sanity check args for renumbering, etc
+    if args.start_line < 1 or args.start_line >= 10000:
+        print("Start line must be in the range 1-9999")
+        sys.exit(1)
+    if args.increment < 1 or args.increment > 5000:
+        print("Increment should be sensible")
+        sys.exit(1)
 
     try:
-        # # Parse the program
-        # model = metamodel.model_from_str(test_program)
-        # print("Program parsed successfully!")
         program = parse_file(args.filename)
 
         if args.find_vars:
-            # print(" ".join(find_variables(program)))
-            # Dump as JSON
             print(json.dumps(find_variables(program), indent=4))
         if args.number or args.delabel:
-            number_lines(program, remove_labels=args.delabel)
+            number_lines(program, remove_labels=args.delabel, start_line=args.start_line, default_increment=args.increment)
         if args.renumber:
-            program = renumber(program, start_line, increment)
+            program = renumber(program, args.start_line, args.increment)
         if args.minimize:
             minimize_variables(program)
         if args.show:
             list_program(program)
 
-    except Exception as e:
+    except textx.exceptions.TextXSyntaxError as e:
         print(f"Parse error: {e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
         sys.exit(1)
