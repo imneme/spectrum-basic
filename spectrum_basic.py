@@ -304,12 +304,14 @@ gen_class("BinaryOp", ["op", "lhs", "rhs"], no_parent=True,dont_code="__str__", 
         return f"{lhs_str} {self.op} {rhs_str}"
 """)
 
+gen_class("ChanSpec", ["chan"], format="#{chan}")
+
 # Find spectrum_basic.tx in the same directory as this script
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
-                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, Rem, Label])
+                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, ChanSpec, Rem, Label])
 
 # Object processors
 #
@@ -399,7 +401,7 @@ metamodel.register_obj_processors({
     # 3-argument commands
     "Draw": ap_coloured,
     "Circle": ap_coloured,
-    # Save/Load commands
+    # File-related commands
     "Save": ap_saveload,
     "Load": ap_saveload,
     "Merge": ap_saveload,
@@ -409,6 +411,8 @@ metamodel.register_obj_processors({
     "LoadCode": ap_standard,
     "FileData": ap_standard,
     "FileScreen": ap_standard,
+    "OpenHash": make_ap_to_builtin("OPEN #"),
+    "CloseHash": make_ap_to_builtin("CLOSE #"),
     # PRINT-like statements
     "Print": ap_print_like,
     "Lprint": ap_print_like,

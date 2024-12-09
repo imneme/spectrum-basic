@@ -146,7 +146,7 @@ Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
     Restore | Pause | Border | Run | Clear | Randomize | Beep | Out |
     Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
     Plot | Draw | Circle | Print | Lprint | Input | Save |
-    Load | Verify | Merge | DefFn | Rem;
+    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem;
 
 // Statement types organized by their class patterns
 
@@ -216,7 +216,7 @@ Circle: /CIRCLE\b/ (colours*=ColourParam[';'] ';')? expr1=Expression ',' expr2=E
 // ==================================
 // Print and Input statements (CLASS_05)
 // ==================================
-PrintItem: ColourParam | At | Tab | Expression;
+PrintItem: ColourParam | At | Tab | ChanSpec | Expression;
 At: /AT\b/ expr1=Expression ',' expr2=Expression;
 Tab: /TAB\b/ expr=Expression;
 PrintSeparator: ',' | ';' | '\'';
@@ -224,11 +224,15 @@ PrintSeparatedItem: item=PrintItem? sep=PrintSeparator;
 Print: /PRINT\b/ items*=PrintSeparatedItem (final=PrintItem)?;
 Lprint: /LPRINT\b/ items*=PrintItem[','];
 
-InputItem: ColourParam | At | Tab | InputLine | VarDest | Expression;
+InputItem: ColourParam | At | Tab | ChanSpec | InputLine | VarDest | Expression;
 PrintSeparator: ',' | ';' | '\'';
 InputSeparatedItem: item=InputItem? sep=PrintSeparator;
 Input: /INPUT\b/ items*=InputSeparatedItem (final=InputItem)?;
 InputLine: /LINE\b/ var=VarDest;
+
+ChanSpec: '#' chan=Expression;
+OpenHash: /OPEN[ \t]*#/ chan=Expression ',' dev=Expression;
+CloseHash: /CLOSE[ \t]*#/ chan=Expression;
 
 // ==================================
 // Cassette/Storage statements (CLASS_0B)
