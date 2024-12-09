@@ -831,7 +831,6 @@ def minimize_variables(program):
     """Find all variables and remap them to minimal form"""
     vars = find_variables(program)
     remapping = calculate_remapping(vars)
-    print(remapping)
     remap_variables(program, remapping)
 
 def renumber(program, start_line=10, increment=10):
