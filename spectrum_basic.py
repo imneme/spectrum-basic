@@ -800,7 +800,7 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
     
     return program
 
-if __name__ == '__main__':
+def main():
     import argparse
     import sys
     import json
@@ -854,3 +854,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Unexpected error: {e}")
         sys.exit(1)
+
+if __name__ == '__main__':
+    main()
