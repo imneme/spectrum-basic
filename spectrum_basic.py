@@ -310,32 +310,35 @@ META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
                                 classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, Rem, Label])
-    
+
+# Object processors
+#
+# The above code provides the core AST classes, but we map many of the
+# concrete syntax elements to generic AST classes.  This is done with
+# object processors, which are functions that take a concrete syntax
+# element and return an AST object.  We use a few different object
+# processors, depending on the kind of syntax element, but mostly
+# we map things to the generic BuiltIn class.
+
 def get_name(obj):
     """Get the name of an AST object"""
     return obj.name if hasattr(obj, "name") else obj.__class__.__name__.upper()
 
-def ap_arg0(obj):
-    """Object processor for zero-argument commands"""
-    # Handle object being a simple type
-    if isinstance(obj, str):
-        return BuiltIn(None, obj)
-    return BuiltIn(obj.parent, get_name(obj))
+def make_ap_to_builtin(name=None, sep=", "):
+    """Create an object processor for syntax elements that become generic BuiltIn objects, optionally specifying a name and separator"""
+    def ap_to_builtin(obj):
+        """Object processor for syntax elements that become generic BuiltIn objects"""
+        if isinstance(obj, str):
+            return BuiltIn(None, name or obj)
+        builtin_name = name or get_name(obj)
+        args = [getattr(obj, field) for field in obj._tx_attrs if field != 'name' or name is not None]
+        while (args and args[-1] is None):
+            args.pop()
+        return BuiltIn(obj.parent, builtin_name, *args, sep=sep)
+    return ap_to_builtin
 
-def ap_arg1(obj):
-    """Object processor for one-argument commands"""
-    if obj.expr is not None:
-        return BuiltIn(obj.parent, get_name(obj), obj.expr)
-    else:
-        return BuiltIn(obj.parent, get_name(obj))
-
-def ap_arg2(obj):
-    """Object processor for two-argument commands"""
-    return BuiltIn(obj.parent, get_name(obj), obj.expr1, obj.expr2)
-
-def ap_arg3(obj):
-    """Object to turn three-argument commands into Action objects"""
-    return BuiltIn(obj.parent, get_name(obj), obj.expr1, obj.expr2, obj.expr3)
+ap_standard = make_ap_to_builtin()
+ap_saveload = make_ap_to_builtin(sep=" ")
 
 def ap_coloured(obj):
     """Object processor for PLOT/DRAW/CIRCLE commands with optional colour parameters"""
@@ -371,46 +374,57 @@ def ap_binop(obj):
 
 metamodel.register_obj_processors({
     # 0-argument commands
-    "New": ap_arg0,
-    "Stop": ap_arg0,
-    "Return": ap_arg0,
-    "Continue": ap_arg0,
-    "Copy": ap_arg0,
-    "Cls": ap_arg0,
-    "Cat": ap_arg0,
+    "New": ap_standard,
+    "Stop": ap_standard,
+    "Return": ap_standard,
+    "Continue": ap_standard,
+    "Copy": ap_standard,
+    "Cls": ap_standard,
+    "Cat": ap_standard,
     # 1-argument commands
-    "Goto": ap_arg1,
-    "Gosub": ap_arg1,
-    "Restore": ap_arg1,
-    "Pause": ap_arg1,
-    "Border": ap_arg1,
-    "Run": ap_arg1,
-    "Clear": ap_arg1,
-    "Randomize": ap_arg1,
-    "ColourParam": ap_arg1,
+    "Goto": ap_standard,
+    "Gosub": ap_standard,
+    "Restore": ap_standard,
+    "Pause": ap_standard,
+    "Border": ap_standard,
+    "Run": ap_standard,
+    "Clear": ap_standard,
+    "Randomize": ap_standard,
+    "ColourParam": ap_standard,
     # 2-argument commands
-    "Beep": ap_arg2,
-    "Out": ap_arg2,
-    "Poke": ap_arg2,
+    "Beep": ap_standard,
+    "Out": ap_standard,
+    "Poke": ap_standard,
     "Plot": ap_coloured,
     # 3-argument commands
     "Draw": ap_coloured,
     "Circle": ap_coloured,
+    # Save/Load commands
+    "Save": ap_saveload,
+    "Load": ap_saveload,
+    "Merge": ap_saveload,
+    "Verify": ap_saveload,
+    "SaveLine": ap_standard,
+    "SaveCode": ap_standard,
+    "LoadCode": ap_standard,
+    "FileData": ap_standard,
+    "FileScreen": ap_standard,
     # PRINT-like statements
     "Print": ap_print_like,
     "Lprint": ap_print_like,
     "Input": ap_print_like,
-    # 1-argument print-modifiers
-    "Tab": ap_arg1,
-    "Line": ap_arg1,
+    # 1-argument modifiers
+    "Tab": ap_standard,
+    "SaveLine": ap_standard,
+    "InputLine": ap_standard,
     # 2-argument print-modifiers
-    "At": ap_arg2,
+    "At": ap_standard,
     # 0-arity functions
-    "PiValue": ap_arg0,
+    "PiValue": ap_standard,
     # 1-arity functions
-    "Function": ap_expr(ap_arg1),
+    "Function": ap_expr(ap_standard),
     # 2-arity functions
-    "TwoArgFn": ap_expr(ap_arg2),
+    "TwoArgFn": ap_expr(ap_standard),
     # Binary operators
     "OrExpr": ap_binop,
     "AndExpr": ap_binop,

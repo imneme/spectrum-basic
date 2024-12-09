@@ -224,21 +224,28 @@ PrintSeparatedItem: item=PrintItem? sep=PrintSeparator;
 Print: /PRINT\b/ items*=PrintSeparatedItem (final=PrintItem)?;
 Lprint: /LPRINT\b/ items*=PrintItem[','];
 
-InputItem: ColourParam | At | Tab | Line | VarDest | Expression;
+InputItem: ColourParam | At | Tab | InputLine | VarDest | Expression;
 PrintSeparator: ',' | ';' | '\'';
 InputSeparatedItem: item=InputItem? sep=PrintSeparator;
 Input: /INPUT\b/ items*=InputSeparatedItem (final=InputItem)?;
-
-Line: /LINE\b/ expr=Expression;
+InputLine: /LINE\b/ var=VarDest;
 
 // ==================================
 // Cassette/Storage statements (CLASS_0B)
 // ==================================
-SaveMode: Line | /CODE\b/ addr=Expression (',' length=Expression)? | /DATA\b/ var=Variable | 'SCREEN$';
-Save: /SAVE\b/ name=Expression (mode=SaveMode)?;
-Load: /LOAD\b/ name=Expression (mode=SaveMode)?;
-Verify: /VERIFY\b/ name=Expression (mode=SaveMode)?;
-Merge: /MERGE\b/ name=Expression;
+
+SaveLine: name=/LINE\b/ expr=Expression;
+SaveCode: name=/CODE\b/ addr=Expression ',' length=Expression;
+LoadCode: name=/CODE\b/ (addr=Expression (',' length=Expression)?)?;
+FileData: name=/DATA\b/ array=VarSymbol '(' ')';
+FileScreen: 'SCREEN$';
+
+SaveMode: SaveLine | SaveCode | FileData | FileScreen;
+Save: /SAVE\b/ expr=Expression (mode=SaveMode)?;
+LoadMode: LoadCode | FileData | FileScreen;
+Load: /LOAD\b/ expr=Expression (mode=LoadMode)?;
+Verify: /VERIFY\b/ expr=Expression (mode=LoadMode)?;
+Merge: /MERGE\b/ expr=Expression;
 
 // ==================================
 // User-defined functions
