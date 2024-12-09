@@ -289,7 +289,25 @@ class PrintItem:
         yield from walk(self.value)
         yield from walk(self.separator)
         yield (Walk.LEAVING, self)
+
+class Rem(Statement):
+    """REM statement"""
+    def __init__(self, parent, comment):
+        self.parent = parent
+        self.comment = comment
     
+    def __str__(self):
+        return f"REM {self.comment}"
+
+class Label(Statement):  # Arguably not really a statement
+    """Label for GOTO/GOSUB"""
+    def __init__(self, parent, name):
+        self.parent = parent
+        self.name = name[1:]
+    
+    def __str__(self):
+        return f"@{self.name}"
+
 # Expression classes
 
 class Expression:
@@ -429,7 +447,7 @@ META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
 metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, 
-                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String])
+                                classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, Rem, Label])
     
 def get_name(obj):
     """Get the name of an AST object"""
@@ -617,11 +635,20 @@ def find_variables(program):
 def list_program(program, file=None):
     """List the program in a BASIC-like format"""
     for line in program.lines:
-        if line.line_number:
-            print(f"{line.line_number}\t", end="", file=file)
+        spacer = "\t"
+        if line.line_number and line.label:
+            print(f"{line.line_number} {line.label}:", end="", file=file)
+            spacer = " "
+        elif line.line_number:
+            print(f"{line.line_number}", end="", file=file)
+        elif line.label:
+            print(f"{line.label}:", end="", file=file)
+            spacer = " " if len(line.label.name) < 6 else spacer
+        
+        if line.statements:
+            print(spacer, ": ".join(str(stmt) for stmt in line.statements), file=file, sep="")
         else:
-            print("\t", end="", file=file)
-        print(": ".join(str(stmt) for stmt in line.statements), file=file)
+            print(file=file)
 
 # Seems silly a function like this one isn't in the standard library
 
@@ -768,6 +795,119 @@ def minimize_variables(program):
     print(remapping)
     remap_variables(program, remapping)
 
+def renumber(program, start_line=10, increment=10):
+    """Renumber a BASIC program with given start line and increment"""
+    # First pass: build line number mapping
+    line_map = {}
+    new_line = start_line
+    last_line = None
+    for line in program.lines:
+        curr_line = line.line_number
+        if curr_line is not None:
+            if last_line is not None and curr_line <= last_line:
+                raise ValueError(f"Huh? Line numbers should increase in order: {curr_line} after {last_line}")
+            if curr_line > new_line and curr_line % 500 == 0:
+                # If the original code was broken up neat sections, try
+                # to preserve that
+                new_line = curr_line
+            line_map[curr_line] = new_line
+            line.line_number = new_line
+            new_line += increment
+
+    # Check the we didn't go over 10000
+    final_line = new_line - increment
+    if (final_line) >= 10000:
+        raise ValueError(f"Renumbering would exceed line number limit: {final_line}")
+
+    # Second pass: update GOTO/GOSUB targets
+    for event, obj in walk(program):
+        if event == Walk.ENTERING:
+            match obj:
+                case BuiltIn(action="GOTO" | "GOSUB" | "RESTORE" | "RUN", args=[target]) if isinstance(target, Number):
+                    # Simple numeric constant
+                    line_num = int(target.value)
+                    if line_num not in line_map:
+                        raise ValueError(f"Invalid {obj.action} to non-existent line {line_num}")
+                    obj.args = (line_map[line_num],)
+                case BuiltIn(action="GOTO" | "GOSUB"):
+                    raise ValueError(f"Cannot renumber {obj.action} with computed line number: {obj.args[0]}")
+    
+    return program
+
+def number_lines(program, remove_labels=True, default_increment=10):
+    """Number any unnumbered lines and optionally remove labels"""
+    # First pass: build line number mapping for all lines
+    line_map = {}  # Maps labels to line numbers
+    numbered_lines = []  # List of (position, line_num, is_blank) for existing numbers
+    lines_to_number = []  # List of (position, label, is_blank) for lines needing numbers
+
+    for i, line in enumerate(program.lines):
+        is_blank = not line.statements
+        if line.line_number:
+            if numbered_lines and line.line_number <= numbered_lines[-1][1]:
+                raise ValueError(f"Line numbers must increase: {line.line_number} after {numbered_lines[-1][1]} at line {i}")
+            numbered_lines.append((i, line.line_number, is_blank))
+            if line.label:
+                line_map[line.label.name] = line.line_number
+        else:
+            lines_to_number.append((i, line.label.name if line.label else None, is_blank))
+    
+    # Now fill in gaps with appropriate line numbers
+    prev_pos, prev_num, prev_blank = -1, 0, False
+    for next_pos, next_num, next_blank in numbered_lines + [(len(program.lines), 10000, False)]:
+        gap_lines = [x for x in lines_to_number if prev_pos < x[0] < next_pos]
+        if gap_lines:
+            # Calculate how many lines we need to fit
+            available_space = next_num - prev_num
+            needed_spaces = sum(1 for _, _, is_blank in gap_lines if not is_blank) + 1
+            increment = min(default_increment, available_space // needed_spaces)
+            if increment < 1:
+                raise ValueError(f"Cannot fit {len(gap_lines)} lines between {prev_num} and {next_num}")
+            
+            new_line = prev_num + (increment if not prev_blank else 0)
+            if prev_blank:
+                # We're overwriting the previous line, so remove its number
+                program.lines[prev_pos].line_number = None
+            for i, label, is_blank in gap_lines:
+                if label:
+                    line_map[label] = new_line
+                if not is_blank or (label and not remove_labels):
+                    program.lines[i].line_number = new_line
+                    new_line += increment
+        
+        prev_pos, prev_num, prev_blank = next_pos, next_num, next_blank
+
+    # Now, filter out any lines we chose not to number (blank ones)
+    program.lines = [line for line in program.lines if line.line_number]
+
+    # Second pass: update label references and optionally remove labels
+    deadly_magic = False
+    for event, obj in walk(program):
+        if event == Walk.ENTERING:
+            match obj:
+                case Statement() as stmt:
+                    deadly_magic = True
+        elif event == Walk.LEAVING:
+            match obj:
+                case Statement() as stmt:
+                    deadly_magic = False
+        elif deadly_magic and event == Walk.VISITING:
+            match obj:
+                case Label(name=label):
+                    # We shall perform deadly magic on this poor label.
+                    # Don't try this at home kids! Experts only!  We shall
+                    # wave our magic wand and turn this label into a number.
+                    if label not in line_map:
+                        raise ValueError(f"Reference to undefined label '{label}'")
+                    obj.__class__ = Number
+                    obj.__init__(obj.parent, line_map[label])
+    
+    if remove_labels:
+        for line in program.lines:
+            line.label = None
+    
+    return program
+
 if __name__ == '__main__':
     import argparse
     import sys
@@ -777,6 +917,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
     parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse")
     parser.add_argument("--show", action="store_true", help="Show the parsed program")
+    # --renumber takes two optional arguments for start line and increment, defaulting to 10 and 10, use --renumber 100,5 to start at 100 in steps of 5, and --renumber 100 to start at 100 in steps of 10
+    parser.add_argument("--number", action="store_true", help="Number any unnumbered lines")
+    parser.add_argument("--delabel", action="store_true", help="Number any unnumbered lines and remove labels")
+    parser.add_argument("--renumber", metavar="start[,increment]", help="Renumber the program")
     parser.add_argument("--minimize", action="store_true", help="Minimize the variable names")
     parser.add_argument("--find-vars", action="store_true", help="Find all the variables in the program")
     args = parser.parse_args()
@@ -786,6 +930,18 @@ if __name__ == '__main__':
 
     if not args.filename:
         args.filename = "/dev/stdin"
+
+    # Check the renumber argument and break out the start and increment
+    if args.renumber:
+        parts = args.renumber.split(",")
+        if len(parts) > 2:
+            print("Invalid renumber argument")
+            sys.exit(1)
+        start_line = int(parts[0])
+        if len(parts) == 2:
+            increment = int(parts[1])
+        else:
+            increment = 10
 
     try:
         # # Parse the program
@@ -797,6 +953,10 @@ if __name__ == '__main__':
             # print(" ".join(find_variables(program)))
             # Dump as JSON
             print(json.dumps(find_variables(program), indent=4))
+        if args.number or args.delabel:
+            number_lines(program, remove_labels=args.delabel)
+        if args.renumber:
+            program = renumber(program, start_line, increment)
         if args.minimize:
             minimize_variables(program)
         if args.show:
