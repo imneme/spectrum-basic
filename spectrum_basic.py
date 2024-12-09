@@ -129,7 +129,7 @@ class BuiltIn(Statement):
     """Represents simple built-in commands with fixed argument patterns"""
     def __init__(self, parent, action, *args, sep=", "):
         self.parent = parent
-        self.action = action
+        self.action = action.upper()
         self.args = args
         self.is_expr = False
         self.sep = sep
