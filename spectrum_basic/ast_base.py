@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from .tokenizer import *
 import re
 
 class Walk(Enum):
@@ -83,6 +84,18 @@ def walk(obj):
 
 # Classes for the BASIC language
 
+def sane_bytes(s):
+    """Like bytes, but works on strings without needing encoding"""
+    if isinstance(s, str):
+        return s.encode('ascii')
+    elif s is None:
+        return b""
+    return bytes(s)
+
+def bjoin(items, sep=b""):
+    """Join a list of byte sequences with a separator"""
+    return sep.join(sane_bytes(item) for item in items)
+
 class ASTNode:
     """Base class for all (non-textx) AST nodes"""
     def __repr__(self):
@@ -130,6 +143,12 @@ class BuiltIn(Statement):
         yield from walk(self.args)
         yield (Walk.LEAVING, self)
 
+    def __bytes__(self):
+        """Return the in-memory representation of the command"""
+        btoken = token_to_byte(self.action)
+        bsep = self.sep.strip().encode('ascii')
+        return btoken + bjoin(self.args, sep=bsep)
+
 class ColouredBuiltin(BuiltIn):
     """Special case for commands that can have colour parameters"""
     def __init__(self, parent, action, colours, *args):
@@ -156,9 +175,22 @@ class ColouredBuiltin(BuiltIn):
         yield from walk(self.args)
         yield (Walk.LEAVING, self)
 
-def nstr(obj):
+    def __bytes__(self):
+        """Return the in-memory representation of the command"""
+        bparts = [token_to_byte(self.action)]
+        if self.colours:
+            bparts.append(bjoin(self.colours, sep=b";"))
+            bparts.append(b";")
+        if self.args:
+            bparts.append(bjoin(self.args, sep=self.sep.strip().encode('ascii')))
+        return bjoin(bparts)
+        
+
+def nstr(obj, sep="", none=""):
     "Like str, but returns an empty string for None"
-    return str(obj) if obj is not None else ""
+    if obj is None:
+        return none
+    return f"{obj}{sep}"
 
 def speccy_quote(s):
     """Quote a string in ZX Spectrum BASIC format"""

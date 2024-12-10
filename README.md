@@ -15,6 +15,7 @@ A Python toolkit for parsing, transforming, and manipulating ZX Spectrum BASIC p
     - Label elimination (for Spectrum compatibility)
 - Detailed variable analysis
 - Pretty printing with authentic Spectrum BASIC formatting
+- TAP file generation for loading programs on a real Spectrum
 
 ## Installation
 
@@ -56,12 +57,15 @@ speccy-basic program.bas --delabel --minimize
 
 # Analyze variables
 speccy-basic program.bas --find-vars
+
+# Generate a TAP file
+speccy-basic program.bas --tap output.tap --tap-name "My Program"
 ```
 
 ### As a Library
 
 ```python
-from spectrum_basic.core import parse_file, number_lines, minimize_variables, list_program
+from spectrum_basic.core import parse_file, number_lines, minimize_variables, make_program_tap, write_tap
 
 # Parse a program
 program = parse_file("my_program.bas")
@@ -71,7 +75,12 @@ number_lines(program, remove_labels=True)
 minimize_variables(program)
 
 # Output the result
-list_program(program)
+str(program)
+
+# Program image and tape generation
+binary_code = bytes(program)
+tap = make_program_tap(binary_code, name="My Program", autostart=9000)
+write_tap(tap, "output.tap")
 ```
 
 ## Enhanced BASIC Features

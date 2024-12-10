@@ -52,12 +52,13 @@ def maybe_regenerate_ast_py():
 maybe_regenerate_ast_py()
 
 from .ast import *
+from .tokenizer import *
 
 # Find spectrum_basic.tx in the same directory as this script
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, ChanSpec, Rem, Label])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
 
 # Object processors
 #
@@ -165,8 +166,8 @@ metamodel.register_obj_processors({
     "Input": ap_print_like,
     # 1-argument modifiers
     "Tab": ap_standard,
-    "SaveLine": ap_standard,
-    "InputLine": ap_standard,
+    "SaveLine": make_ap_to_builtin("LINE"),
+    "InputLine": make_ap_to_builtin("LINE"),
     # 2-argument print-modifiers
     "At": ap_standard,
     # 0-arity functions
@@ -546,6 +547,67 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
     
     return program
 
+def make_header(type_code: int, name: str, length: int, param1: int, param2: int) -> bytes:
+    """Create a ZX Spectrum tape header block.
+    
+    Args:
+        type_code: 0=Program, 1=Number array, 2=Character array, 3=Code file
+        name: Filename (will be padded/truncated to 10 chars)
+        length: Length of the data block that follows
+        param1: Parameter 1 (meaning depends on type_code)
+        param2: Parameter 2 (meaning depends on type_code)
+    """
+    # Ensure name is exactly 10 bytes, space padded
+    name_bytes = name.encode('ascii', 'replace')[:10].ljust(10, b' ')
+    
+    # Pack header: type (1 byte) + name (10 bytes) + 3 shorts
+    return bytes([type_code]) + name_bytes + \
+           length.to_bytes(2, 'little') + \
+           param1.to_bytes(2, 'little') + \
+           param2.to_bytes(2, 'little')
+
+def tape_checksum(data: bytes) -> int:
+    """Calculate Spectrum tape checksum (XOR of all bytes)"""
+    result = 0
+    for b in data:
+        result ^= b
+    return result
+
+def make_tape_block(marker: int, data: bytes) -> bytes:
+    """Create a tape block with marker, data, and checksum.
+    Returns the block prefixed with its length (TAP format)."""
+    block = bytes([marker]) + data
+    block += bytes([tape_checksum(block)])
+    
+    # TAP format: length (2 bytes) followed by block
+    return len(block).to_bytes(2, 'little') + block
+
+def make_program_tap(progname: str, program: bytes, 
+                      autostart: int = -1) -> bytes:
+    """Create a TAP file containing a BASIC program.
+    
+    Args:
+        filename: Name to give the program (max 10 chars)
+        program: The tokenized BASIC program
+        autostart: LINE parameter (≥32768 means no LINE given)
+        vars_offset: Start of variable area relative to program start
+    """
+    autostart = autostart if autostart >= 0 else 32768
+    # Make header block (type 0 = Program)
+    proglen = len(program)
+    header = make_header(0, progname, proglen, autostart, proglen)
+    header_block = make_tape_block(0x00, header)
+    
+    # Make data block
+    data_block = make_tape_block(0xff, program)
+    
+    return header_block + data_block
+
+def write_tap(tap_data: bytes, filename: str):
+    """Write TAP data to a file."""
+    with open(filename, 'wb') as f:
+        f.write(tap_data)
+
 def main():
     import argparse
     import sys
@@ -561,9 +623,13 @@ def main():
     parser.add_argument("--increment", help="Increment for renumbering, numbering and delabeling", type=int, default=10)
     parser.add_argument("--minimize", action="store_true", help="Minimize(/legalize) the variable names")
     parser.add_argument("--find-vars", action="store_true", help="Find all the variables in the program and dump them as JSON")
+    parser.add_argument("--tap", help="Write the program to a TAP file", metavar="FILENAME")
+    # program name for tap file
+    parser.add_argument("--tap-name", help="Name to give the program in the TAP file", default="SpeccyFun!")
+    parser.add_argument("--tap-line", help="Run the program from a specific line", type=int, default=-1)
     args = parser.parse_args()
 
-    if not any((args.show, args.find_vars)):
+    if not any((args.show, args.find_vars, args.tap)):
         args.show = True
 
     if not args.filename:
@@ -590,12 +656,22 @@ def main():
             minimize_variables(program)
         if args.show:
             list_program(program)
+        if args.tap:
+            code = bytes(program)
+            tap = make_program_tap(args.tap_name, code, autostart=args.tap_line)
+            write_tap(tap, args.tap)
+
 
     except textx.exceptions.TextXSyntaxError as e:
         print(f"Parse error: {e}")
         sys.exit(1)
     except ValueError as e:
         print(f"Error: {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("Interrupted", file=sys.stderr)
+        sys.exit(1)
+    except BrokenPipeError:
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
