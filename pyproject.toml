@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spectrum-basic"
+version = "0.1.0"
+description = "A parser and language tool for ZX Spectrum BASIC"
+authors = [
+    {name = "Melissa E. O'Neill", email = "oneill@acm.org"},
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = ["textx"]
+keywords = ["zx-spectrum", "basic", "retro", "compiler"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/imneme/spectrum-basic"
+Documentation = "https://github.com/imneme/spectrum-basic#readme"
+"Bug Tracker" = "https://github.com/imneme/spectrum-basic/issues"
+
+[project.scripts]
+speccy-basic = "spectrum_basic.__main__:main"

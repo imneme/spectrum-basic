@@ -30,19 +30,19 @@ pip install textx
 
 ```bash
 # Show the parsed and pretty-printed program
-python spectrum_basic.py program.bas --show
+python3 -m spectrum_basic program.bas --show
 
 # Number unnumbered lines and remove labels
-python spectrum_basic.py program.bas --delabel
+python3 -m spectrum_basic program.bas --delabel
 
 # Minimize variable names
-python spectrum_basic.py program.bas --minimize
+python3 -m spectrum_basic program.bas --minimize
 
 # Combine transformations
-python spectrum_basic.py program.bas --delabel --minimize
+python3 -m spectrum_basic program.bas --delabel --minimize
 
 # Analyze variables
-python spectrum_basic.py program.bas --find-vars
+python3 -m spectrum_basic program.bas --find-vars
 ```
 
 ### As a Library
