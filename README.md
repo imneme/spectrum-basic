@@ -18,37 +18,50 @@ A Python toolkit for parsing, transforming, and manipulating ZX Spectrum BASIC p
 
 ## Installation
 
-Currently available as a single Python file. Requires Python 3.10+ and the TextX parsing library:
+For developer mode, clone the repository and install the package in editable mode:
 
 ```bash
-pip install textx
+git clone https://github.com/imneme/spectrum-basic.git
+cd spectrum-basic
+pip install -e .
 ```
+
+Install from PyPI:
+
+```bash
+pip install speccy-basic
+``` 
+
+
+Requires Python 3.10 or later. 
 
 ## Usage
 
 ### Command Line
 
+The package installs a command-line tool called `speccy-basic`:
+
 ```bash
 # Show the parsed and pretty-printed program
-python3 -m spectrum_basic program.bas --show
+speccy-basic program.bas --show
 
 # Number unnumbered lines and remove labels
-python3 -m spectrum_basic program.bas --delabel
+speccy-basic program.bas --delabel
 
 # Minimize variable names
-python3 -m spectrum_basic program.bas --minimize
+speccy-basic program.bas --minimize
 
 # Combine transformations
-python3 -m spectrum_basic program.bas --delabel --minimize
+speccy-basic program.bas --delabel --minimize
 
 # Analyze variables
-python3 -m spectrum_basic program.bas --find-vars
+speccy-basic program.bas --find-vars
 ```
 
 ### As a Library
 
 ```python
-from spectrum_basic import parse_file, number_lines, minimize_variables, list_program
+from spectrum_basic.core import parse_file, number_lines, minimize_variables, list_program
 
 # Parse a program
 program = parse_file("my_program.bas")
@@ -74,15 +87,38 @@ NEXT I
 GOTO @loop
 ```
 
-Labels can be used in:
+Label names are written `@identifier`. Lines are labeled by putting the label at the start of the line, followed by a colon. They can be used anywhere where you would write a line number, including:
 
-- GOTO/GOSUB statements
+- `GOTO`/`GOSUB` statements
 - Arithmetic expressions (e.g., `(@end - @start)/10`)
-- Any line of code (numbered or unnumbered)
+
 
 ## Working with the AST
 
-If you want to analyze or transform BASIC programs, you'll need to work with the Abstract Syntax Tree (AST) that represents the program's structure. This section provides an overview of the AST nodes and how to traverse them.
+If you want to analyze or transform BASIC programs, you'll need to work with the Abstract Syntax Tree (AST) that represents the program's structure. Import the AST nodes from the ast module:
+
+```python
+from spectrum_basic.ast import Variable, Number, Label, BuiltIn
+```
+
+The AST nodes have attributes that correspond to the fields of the original BASIC code. For example:
+
+```text
+>>> from spectrum_basic import *
+>>> prog = parse_string('10 PRINT "Hello World!";')
+>>> len(prog.lines)
+1
+>>> (stmt := prog.lines[0].statements[0])
+PRINT "Hello World!";
+>>> (arg := stmt.args[0])
+"Hello World!";
+>>> arg.value
+"Hello World!"
+>>> arg.sep
+';'
+```
+
+However, for many applications where you want to traverse syntax tree, you may prefer to use the AST walking API described below.
 
 ### AST Walking
 
@@ -107,7 +143,7 @@ def find_variables(program):
     return sorted(variables)
 ```
 
-You can control traversal by sending `Walk.SKIP` back to the generator to skip processing a node's children.  You can also just abandon the generator at any time.
+You can control traversal by sending `Walk.SKIP` back to the generator to skip processing a node's children. You can also just abandon the generator at any time.
 
 ### Key AST Nodes
 
