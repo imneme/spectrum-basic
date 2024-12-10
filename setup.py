@@ -24,5 +24,9 @@ setup(
     # Note: Most metadata is now specified in pyproject.toml
     # but we need at least packages and cmdclass here.
     packages=["spectrum_basic"],
+    include_package_data=True,
+    package_data={
+        "spectrum_basic": ["*.tx"]
+    },
     cmdclass={"build_py": GenerateAst},
 )
