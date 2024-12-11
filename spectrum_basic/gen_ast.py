@@ -28,7 +28,7 @@ def gen_ast_classes(output_file):
         # we add that automagically
 
         # Format of lines: Nesting of the list of strings is used for indentation
-        lines = [f"class {name}({superclass or "ASTNode"}):",
+        lines = [f"class {name}({superclass or 'ASTNode'}):",
                  [f'"""{name} AST node"""']]
         if not "__init__" in dont_code:
             # First, code for the __init__ method
