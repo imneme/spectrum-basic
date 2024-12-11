@@ -1,6 +1,8 @@
 # All 128 ZX Spectrum BASIC tokens (including the additions from the
 # ZX Spectrum Next).
 
+import re
+
 TOKENS = [
     "PEEK$", "REG", "DPOKE", "DPEEK", "MOD", "<<", ">>", "UNTIL",
     "ERROR", "ON", "DEF PROC", "END PROC", "PROC", "LOCAL", "DRIVER",
@@ -21,6 +23,77 @@ TOKENS = [
 ]
 
 CODE_FOR = {token: i+128+7 for i, token in enumerate(TOKENS)}
+
+BLOCK_ESCAPES = ["  ", " '", "' ", "''", " .", " :", "'.", "':",
+                ". ", ".'", ": ", ":'", "..", ".:", ":.", "::"]
+UNICODE_BLOCKS = {
+    "\u2800",   # U+2800 BRAILLE PATTERN BLANK
+    "▘",        # Top left
+    "▝",        # Top right
+    "▀",        # Top half (both top blocks)
+    "▖",        # Bottom left
+    "▌",        # Left half
+    "▞",        # Diagonal
+    "▛",        # Three blocks (missing bottom right)
+    "▗",        # Bottom right
+    "▚",        # Diagonal
+    "▐",        # Right half
+    "▜",        # Three blocks (missing bottom left)
+    "▄",        # Bottom half
+    "▙",        # Three blocks (missing top right)
+    "▟",        # Three blocks (missing top left)
+    "█",        # Full block
+}
+
+BYTE_FOR_BLOCK_ESCAPE = {glyph.encode("ascii"): bytes([i+128]) for i, glyph in enumerate(BLOCK_ESCAPES)}
+BYTE_FOR_UNICODE = {
+    "©": b"\x7f",
+    "↑": b"^",
+    "£": b"`",
+    **{uni: bytes([i+128]) for i, uni in enumerate(UNICODE_BLOCKS)}
+}
+UNICODE_BLOCK_FOR_BLOCK_ESCAPE = {e: u for e, u in zip(BLOCK_ESCAPES, UNICODE_BLOCKS)}
+
+BYTES_BLOCK_ESCAPE_RE = re.compile(rb"\\([.:' ]{2})")
+BLOCK_ESCAPE_RE = re.compile(r"\\([.:' ]{2})")
+
+def uchar_to_byte(char):
+    """Convert a (potentially unicode) character to a ZX Spectrum one."""
+    if (b := BYTE_FOR_UNICODE.get(char)) is not None:
+        return b
+    return char.encode('ascii')
+
+def strlit_to_bytes(s):
+    """Convert a string literal to ZX Spectrum BASIC bytes."""
+    # First, convert to bytes
+    bstr = b''.join(uchar_to_byte(c) for c in s)
+    # Then, escape any block characters
+    bstr = BYTES_BLOCK_ESCAPE_RE.sub(lambda m: BYTE_FOR_BLOCK_ESCAPE[m.group(1)], bstr)
+    # \* becomes 127, the copyright symbol
+    bstr = bstr.replace(b'\\*', b'\x7f')
+    # \{number} becomes the corresponding exactly that ASCII character
+    def number_to_byte(m):
+        n = int(m.group(1))
+        if n > 255:
+            raise ValueError(f"Character code too large, in \\{{{n}}}")
+        return bstr((n,))
+    bstr = re.sub(rb"\\\{(\d+)\}", number_to_byte, bstr)
+    # \a..u becomes the corresponding UDG character (either case)
+    def udg_to_byte(m):
+        c = m.group(1).upper()
+        if c < b'A' or c > b'U':
+            raise ValueError(f"Invalid UDG character, in \\{c}")
+        return bytes((c[0] - 65 + 144,))
+    bstr = re.sub(rb"\\([a-u])", udg_to_byte, bstr)
+    # Doubled backslashes become a single backslash
+    bstr = bstr.replace(b'\\\\', b'\\')
+    # Then double any double quotes
+    bstr = bstr.replace(b'"', b'""')
+    return b'"' + bstr + b'"'
+
+def escapes_to_unicode(s):
+    """Convert ZX Spectrum block escapes to unicode."""
+    return BLOCK_ESCAPE_RE.sub(lambda m: UNICODE_BLOCK_FOR_BLOCK_ESCAPE[m.group(1)], s)
 
 def num_to_specfloat(num):
     """Convert a Python number to ZX Spectrum's floating point format.

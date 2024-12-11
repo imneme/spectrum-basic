@@ -219,7 +219,8 @@ def nstr(obj, sep="", none=""):
 def speccy_quote(s):
     """Quote a string in ZX Spectrum BASIC format"""
     doubled = s.replace('"', '""')
-    return f'"{doubled}"'
+    unescaped = escapes_to_unicode(doubled)
+    return f'"{unescaped}"'
 
 
 # Expression classes
