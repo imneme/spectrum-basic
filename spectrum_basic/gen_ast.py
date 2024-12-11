@@ -126,7 +126,7 @@ def gen_ast_classes(output_file):
               superclass="Statement")
     gen_class("DefFn", ["name", "params", "expr"], 
               format="DEF FN {name}({', '.join(str(p) for p in params)}) = {expr}", keyword="DEF FN",
-              bytescode="[name, b'(', bjoin(params, sep=b','), b')=', expr]",
+              bytescode="[name, b'(', bjoin([bytes(p) + bytes((14,0,0,0,0,0)) for p in params], sep=b','), b')=', expr]",
               superclass="Statement")
     gen_class("PrintItem", ["value", "sep"], format="{nstr(value)}{nstr(sep)}", no_parent=True, no_token=True, bsep=None)
     gen_class("Rem", ["comment"], is_leaf=True, format="REM {comment}", superclass="Statement")
@@ -141,7 +141,7 @@ def gen_ast_classes(output_file):
     gen_class("ArrayRef", ["name", "subscripts"], format="{name}({', '.join(str(s) for s in subscripts)})",
               bytescode="[name, b'(', bjoin(subscripts, sep=b','), b')']", no_token=True)
     gen_class("Fn", ["name", "args"], format="FN {name}({', '.join(str(arg) for arg in args)})",
-              bytescode="[name, b'(', bjoin(args, sep=b','), b')']", no_token=True)
+              bytescode="[name, b'(', bjoin(args, sep=b','), b')']")
     gen_class("Slice", ["min", "max"], dont_code=["__str__","__bytes__"], xcode="""
     def __str__(self):
         if self.min is None:
@@ -157,6 +157,10 @@ def gen_ast_classes(output_file):
             return bjoin([self.min, bto])
         return bjoin([self.min, bto, self.max])
 """)
+    gen_class("StringSubscript", ["expr", "index"], 
+              format="{expr if isinstance(expr, String) else '(' + str(expr) + ')'}({index})",
+              bytescode="([expr] if isinstance(expr, String) else [b'(', expr, b')']) + [b'(', index, b')']",
+              no_token=True, no_parent=True, superclass="Expression")
     
     gen_class("BinaryOp", ["op", "lhs", "rhs"], no_parent=True, dont_code=["__str__", "__bytes__"], xcode="""
     def __str__(self):

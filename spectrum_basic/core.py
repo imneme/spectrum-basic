@@ -118,10 +118,20 @@ def ap_binop(obj):
     # Need to reduce to chain of binary operations
     return functools.reduce(lambda l, r: BinaryOp(r.op, l, r.expr), obj.rest, obj.first)
 
+ap_standard_expr = ap_expr(ap_standard)
+
+def ap_string_subscript(obj):
+    """Object processor for string subscript expressions"""
+    if obj.subscript is not None:
+        return StringSubscript(obj.expr, obj.subscript)
+    return obj.expr
 
 # Register object processors
 
 metamodel.register_obj_processors({
+    # Subscript expressions
+    "LitStringExpr": ap_string_subscript,
+    "ParenExpr": ap_string_subscript,
     # 0-argument commands
     "New": ap_standard,
     "Stop": ap_standard,
@@ -171,11 +181,11 @@ metamodel.register_obj_processors({
     # 2-argument print-modifiers
     "At": ap_standard,
     # 0-arity functions
-    "PiValue": ap_standard,
+    "CompValue": ap_standard,
     # 1-arity functions
-    "Function": ap_expr(ap_standard),
+    "Function": ap_standard_expr,
     # 2-arity functions
-    "TwoArgFn": ap_expr(ap_standard),
+    "TwoArgFn": ap_standard_expr,
     # Binary operators
     "OrExpr": ap_binop,
     "AndExpr": ap_binop,
@@ -224,7 +234,7 @@ def find_variables(program):
                 case "fn-info":         # fn-info is not a simple mapping
                     return vars[kind]
                 case "param":          # leave params in order encountered
-                    return vars[kind].values()
+                    return list(vars[kind].values())
                 case _:                 # sort the rest
                     return sorted(vars[kind].values())
         return {kind: process_kind(kind) for kind in vars}
@@ -678,7 +688,7 @@ def main():
         sys.exit(1)
     except BrokenPipeError:
         sys.exit(1)
-    except Exception as e:
+    except ValueError as e:
         print(f"Unexpected error: {e}")
         sys.exit(1)
 

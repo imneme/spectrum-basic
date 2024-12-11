@@ -128,18 +128,21 @@ FunctionExpr: Function | SpecialFn | Primary;
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
 FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ | 
              /LN\b/ | /SGN\b/ | /SIN\b/ | /SQR\b/ | /TAN\b/ | /USR\b/ | /LEN\b/ |
-             /CODE\b/ | /VAL\b/ | 'CHR$' | 'STR$' | 'VAL$';
+             /CODE\b/ | /VAL\b/ | /PEEK\b/ | 'CHR$' | 'STR$' | 'VAL$';
 
 // Functions with multiple arguments
 TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';
 TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
-PiValue: /PI\b/;
+CompValue: /PI\b/ | /RND\b/ | /INKEY\$/;
 BinValue: /BIN\b/ digits=/[01]+/;
 Fn: /FN\b/ name=VarSymbol '(' args*=Expression[','] ')';
-SpecialFn: TwoArgFn | PiValue | BinValue | Fn;
+SpecialFn: TwoArgFn | CompValue | BinValue | Fn;
 
 // Primary expressions
-Primary: Number | String | Label | VarDest | '(' Expression ')';
+Primary: Number | LitStringExpr | Label | VarDest | ParenExpr;
+
+LitStringExpr: expr=String ( '(' subscript=SliceExpression ')' )?;
+ParenExpr: '(' expr=Expression ')' ( '(' subscript=SliceExpression ')' )?;
 
 Number: value=NUMBER;
 String: value=/"(?:[^"\n]|"")*"/;
@@ -147,7 +150,7 @@ String: value=/"(?:[^"\n]|"")*"/;
 // Variables and Array references
 ArrayRef: name=VarSymbol '(' subscripts+=SliceExpression[','] ')';
 Variable: name=VarSymbol;
-VarSymbol: /[A-Z][ \tA-Z0-9]*\$?/;
+VarSymbol: /[A-Z]([A-Z0-9]*|[ \t]+(?!THEN))+\$?/;
 VarDest: ArrayRef | Variable;
 
 Slice: 
@@ -182,8 +185,8 @@ Cat: /CAT\b/;
 // ==================================
 // Simple CLASS_06 - Single numeric expression
 // ==================================
-Goto: /GOTO\b/ expr=Expression | 'GO TO' expr=Expression;
-Gosub: /GOSUB\b/ expr=Expression | 'GO SUB' expr=Expression;
+Goto: /GOTO\b/ expr=Expression | /GO TO\b/ expr=Expression;
+Gosub: /GOSUB\b/ expr=Expression | /GO SUB\b/ expr=Expression;
 Restore: /RESTORE\b/ expr=Expression;
 Pause: /PAUSE\b/ expr=Expression;
 Border: /BORDER\b/ expr=Expression;
@@ -277,7 +280,7 @@ DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params+=Variable[','] ')')? '=' expr=E
 // ==================================
 // Rem (special case - consumes to EOL)
 // ==================================
-Rem: /REM\b/ comment=/[^\n]*/;
+Rem: /REM\b/ comment=/[^\r\n]*/;
 
 // ==================================
 // Additions to the ZX Spectrum BASIC grammar

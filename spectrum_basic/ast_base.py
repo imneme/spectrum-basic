@@ -159,7 +159,19 @@ class BuiltIn(Statement):
         """Return the in-memory representation of the command"""
         btoken = token_to_byte(self.action)
         bsep = self.sep.strip().encode('ascii')
-        return btoken + bjoin(self.args, sep=bsep)
+        present_args = [arg for arg in self.args if arg is not None]
+        if self.is_expr:
+            if len(self.args) == 1:
+                the_arg = self.args[0]
+                if is_complex(the_arg):
+                    return bjoin([btoken, b'(', the_arg, b')'])
+                return bjoin([btoken, the_arg])
+            elif len(self.args) == 0:
+                return btoken
+            else:
+                return bjoin([btoken, b'(', bjoin(present_args, sep=bsep), b')'])
+        else:
+            return bjoin([btoken, bjoin(present_args, sep=bsep)])
 
 class ColouredBuiltin(BuiltIn):
     """Special case for commands that can have colour parameters"""
