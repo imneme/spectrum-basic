@@ -65,7 +65,7 @@ speccy-basic program.bas --tap output.tap --tap-name "My Program"
 ### As a Library
 
 ```python
-from spectrum_basic.core import parse_file, number_lines, minimize_variables, make_program_tap, write_tap
+from spectrum_basic import parse_file, number_lines, minimize_variables, make_program_tap, write_tap
 
 # Parse a program
 program = parse_file("my_program.bas")
