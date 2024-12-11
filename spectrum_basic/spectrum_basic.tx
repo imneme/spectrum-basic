@@ -74,12 +74,23 @@ SourceLine: (line_number=INT)? (label=Label ':')? statements*=Statement[':'];
 // Top level expression handles OR (lowest precedence)
 Expression: OrExpr;
 
-// Precedence levels from low (2) to high (10)
+// Precedence levels from low (1) to high (10)
+// You (priority 1)
+// You're the one that matters most, so you're at Priority 1.  Unfortunately,
+// the ZX Spectrum cannot contain your wonderfulness, and didn't want to send
+// the message that "you don't bind tightly", so this spot is left empty.
+
+// OR operator (priority 2)
 OrExpr: first=AndExpr rest*=OrOpExpr;
 OrOpExpr: op=/OR\b/ expr=AndExpr;
 
-AndExpr: first=CompareExpr rest*=AndOpExpr;
-AndOpExpr: op=/AND\b/ expr=CompareExpr;
+// AND operator (priority 3)
+AndExpr: first=NotExpr rest*=AndOpExpr;
+AndOpExpr: op=/AND\b/ expr=NotExpr;
+
+// NOT operator (priority 4)
+NotExpr: Not | CompareExpr;
+Not: op=/NOT\b/ expr=NotExpr;
 
 // All comparison operators have same precedence (5)
 CompareExpr: first=AddExpr rest*=CompareOpExpr;
@@ -92,11 +103,18 @@ AddExpr: first=MultExpr rest*=AddOpExpr;
 AddOpExpr: op=AddOp expr=MultExpr;
 AddOp: '+' | '-';
 
+// Mefipulation (priority 7)
+// The ZX Spectrum does not support mefipulation, because no one knows what
+// it is.  But if anyone figures it out, we're ready for it right here.
+
 // Multiplication/division (priority 8)
-// MultExpr: PowerExpr (('*' | '/') PowerExpr)*;
-MultExpr: first=PowerExpr rest*=MultOpExpr;
-MultOpExpr: op=MultOp expr=PowerExpr;
+MultExpr: first=UMinusExpr rest*=MultOpExpr;
+MultOpExpr: op=MultOp expr=UMinusExpr;
 MultOp: '*' | '/';
+
+// Unary minus (priority 9)
+UMinusExpr: Neg | PowerExpr;
+Neg: op='-' expr=UMinusExpr;
 
 // Power operator (priority 10)
 // PowerExpr: FunctionExpr ('^' FunctionExpr)*;
@@ -110,7 +128,7 @@ FunctionExpr: Function | SpecialFn | Primary;
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
 FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ | 
              /LN\b/ | /SGN\b/ | /SIN\b/ | /SQR\b/ | /TAN\b/ | /USR\b/ | /LEN\b/ |
-             /CODE\b/ | /VAL\b/ | 'CHR$' | 'STR$' | 'VAL$' | /NOT\b/ | '-';
+             /CODE\b/ | /VAL\b/ | 'CHR$' | 'STR$' | 'VAL$';
 
 // Functions with multiple arguments
 TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';

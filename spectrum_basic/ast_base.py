@@ -11,7 +11,7 @@ class Walk(Enum):
 # The ZX Spectrum BASIC Grammar is found in spectrum_basic.tx
 
 # Operator precedence table (higher number = tighter binding)
-PRECEDENCE = {
+BINARY_PRECEDENCE = {
     'OR': 2,
     'AND': 3,
     '=': 5, '<': 5, '>': 5, '<=': 5, '>=': 5, '<>': 5,
@@ -20,6 +20,19 @@ PRECEDENCE = {
     '^': 10,
 }
 
+UNARY_PRECEDENCE = {
+    '-': 9,
+    'NOT': 4,
+}
+
+def precedence(expr):
+    """Get the precedence of an operator"""
+    if isinstance(expr, BinaryOp):
+        return BINARY_PRECEDENCE[expr.op]
+    if isinstance(expr, UnaryOp):
+        return UNARY_PRECEDENCE[expr.op]
+    return 0
+
 def is_complex(expr):
     """Determine if an expression needs parentheses in function context"""
     if isinstance(expr, BinaryOp):
@@ -27,17 +40,16 @@ def is_complex(expr):
     # Could add other cases here
     return False
 
-def needs_parens(expr, parent_op=None, is_rhs=False):
+def needs_parens(expr, parent=None, is_rhs=False):
     """Determine if expression needs parentheses based on context"""
-    if not isinstance(expr, BinaryOp):
+    if not isinstance(expr, BinaryOp) and not isinstance(expr, UnaryOp):
         return False
-        
-    expr_prec = PRECEDENCE[expr.op]
-    
-    if parent_op is None:
+
+    if parent is None:
         return False
-        
-    parent_prec = PRECEDENCE[parent_op]
+
+    expr_prec = precedence(expr)
+    parent_prec = precedence(parent)
     
     # Different cases where we need parens:
     
@@ -48,10 +60,10 @@ def needs_parens(expr, parent_op=None, is_rhs=False):
     # Equal precedence depends on operator and position
     if expr_prec == parent_prec:
         # For subtraction and division, right side always needs parens
-        if parent_op in {'-', '/'} and is_rhs:
+        if parent.op in {'-', '/'} and is_rhs:
             return True
         # For power, both sides need parens if same precedence
-        if parent_op == '^':
+        if parent.op == '^':
             return True
     
     return False

@@ -162,12 +162,12 @@ def gen_ast_classes(output_file):
     def __str__(self):
         # Format left side
         lhs_str = str(self.lhs)
-        if isinstance(self.lhs, BinaryOp) and needs_parens(self.lhs, self.op, False):
+        if (isinstance(self.lhs, BinaryOp) or isinstance(self.lhs, UnaryOp)) and needs_parens(self.lhs, self, False):
             lhs_str = f"({lhs_str})"
             
         # Format right side
         rhs_str = str(self.rhs)
-        if isinstance(self.rhs, BinaryOp) and needs_parens(self.rhs, self.op, True):
+        if isinstance(self.rhs, BinaryOp) and needs_parens(self.rhs, self, True):
             rhs_str = f"({rhs_str})"
             
         return f"{lhs_str} {self.op} {rhs_str}"
@@ -175,16 +175,40 @@ def gen_ast_classes(output_file):
         bop = token_to_byte(self.op)
         # Format left side
         blhs = bytes(self.lhs)
-        if isinstance(self.lhs, BinaryOp) and needs_parens(self.lhs, self.op, False):
+        if isinstance(self.lhs, BinaryOp) and needs_parens(self.lhs, self, False):
             blhs = b'(' + blhs + b')'
         
         # Format right side
         brhs = bytes(self.rhs)
-        if isinstance(self.rhs, BinaryOp) and needs_parens(self.rhs, self.op, True):
+        if isinstance(self.rhs, BinaryOp) and needs_parens(self.rhs, self, True):
             brhs = b'(' + brhs + b')'
         
         return blhs + bop + brhs
 """)
+    gen_class("UnaryOp", ["op", "expr"], dont_code=["__str__", "__bytes__"], xcode="""
+    def __str__(self):
+        expr_str = str(self.expr)
+        if isinstance(self.expr, BinaryOp) and needs_parens(self.expr, self, False):
+            expr_str = f"({expr_str})"
+        # whether to add a space after the operator depends on whehter it is a symbol
+        # like - or a keyword like NOT
+        spacer = ' ' if self.op.isalpha() else ''
+        return f"{self.op}{spacer}{expr_str}"
+    def __bytes__(self):
+        bop = token_to_byte(self.op)
+        bexpr = bytes(self.expr)
+        if isinstance(self.expr, BinaryOp) and needs_parens(self.expr, self, False):
+            bexpr = b'(' + bexpr + b')'
+        return bop + bexpr
+""")
+    
+    print("""
+class Not(UnaryOp):
+    pass
+
+class Neg(UnaryOp):
+    pass
+""", file=output_file)
 
     gen_class("ChanSpec", ["chan"], format="#{chan}", no_token=True,
                 bytescode="[b'#', chan]")

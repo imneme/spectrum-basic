@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
 
 # Object processors
 #
