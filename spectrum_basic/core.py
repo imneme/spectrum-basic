@@ -694,9 +694,29 @@ def main():
             tap = make_program_tap(args.tap_name, code, autostart=args.tap_line)
             write_tap(tap, args.tap)
 
-
     except textx.exceptions.TextXSyntaxError as e:
-        print(f"Parse error: {e}")
+        # Print GCC-style error message
+        message = e.message
+        # Make message more user-friendly
+        SWITCHAROOS = {
+            "@[A-Z][A-Z0-9_]*": "Label",
+            r'[\r\n]\s*': "Newline",
+            r'[ \t]*': " ",
+            r'\b': "",
+            "Colon": "':'",
+            "ColourCode": "ColourEscape",
+            "New": "'NEW'",
+            "Stop": "'STOP'",
+            "Return": "'RETURN'",
+            "Continue": "'CONTINUE'",
+            "Copy": "'COPY'",
+            "Cls": "'CLS'",
+            "Cat": "'CAT'",
+        }
+        for pattern, replacement in SWITCHAROOS.items():
+            message = message.replace(pattern, replacement)
+        print(f"{e.filename}:{e.line}:{e.col}: {message}")
+        print(f"\tstopped here: '{e.context}' <-- '*' indicates point where parse failed" if e.context else "")
         sys.exit(1)
     except ValueError as e:
         print(f"Error: {e}")
