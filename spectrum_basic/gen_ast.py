@@ -90,7 +90,7 @@ def gen_ast_classes(output_file):
         text = "\n".join(text).strip()
         print(text, file=output_file, end="\n\n")
 
-    gen_class("Program", ["lines"], format="{'\\n'.join(str(line) for line in lines)}",
+    gen_class("Program", ["lines"], format="{chr(10).join(str(line) for line in lines)}",
                 bytescode="[bjoin(lines)]", no_parent=True, no_token=True)
 
     gen_class("SourceLine", ["line_number", "label", "statements"], 
