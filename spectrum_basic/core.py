@@ -42,7 +42,7 @@ def maybe_regenerate_ast_py():
     not_there = not exists(ast_py_filename)
     needs_regen = (not_there or 
                 (exists(gen_ast_filename) and 
-                    getmtime(gen_ast_filename) > getmtime(ast_py_filename)))
+                    getmtime(gen_ast_filename) > getmtime(ast_py_filename) + 1))
 
     if needs_regen:
         print("Creating ast.py" if not_there else "Updating ast.py", file=sys.stderr)
