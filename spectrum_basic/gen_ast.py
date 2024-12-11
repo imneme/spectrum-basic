@@ -124,6 +124,8 @@ def gen_ast_classes(output_file):
               format="DIM {name}({', '.join(str(d) for d in dims)})",
               bytescode="[name, b'(', bjoin(dims, sep=b','), b')']",
               superclass="Statement")
+    gen_class("Data", ["items"], format="DATA {', '.join(str(v) for v in items)}", bytescode="[bjoin(items,sep=b',')]", superclass="Statement")
+    gen_class("Read", ["vars"], format="READ {', '.join(str(v) for v in vars)}", bytescode="[bjoin(vars, sep=b',')]", superclass="Statement")
     gen_class("DefFn", ["name", "params", "expr"], 
               format="DEF FN {name}({', '.join(str(p) for p in params)}) = {expr}", keyword="DEF FN",
               bytescode="[name, b'(', bjoin([bytes(p) + bytes((14,0,0,0,0,0)) for p in params], sep=b','), b')=', expr]",
@@ -216,6 +218,7 @@ class Neg(UnaryOp):
 
     gen_class("ChanSpec", ["chan"], format="#{chan}", no_token=True,
                 bytescode="[b'#', chan]")
+    gen_class("Colons", ["colons"], format="{colons}", no_token=True, is_leaf=True, bytescode="[safe_bytes(colons)]", superclass="Statement")
 
 def gen_ast_py(outputname):
     with open(outputname, "w") as output_file:

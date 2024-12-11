@@ -31,7 +31,7 @@
 import textx
 from textx import metamodel_from_file
 import functools
-from os.path import dirname, join, exists, getmtime
+from os.path import dirname, join, exists, getmtime, splitext, basename
 import sys
 
 def maybe_regenerate_ast_py():
@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, PrintItem, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Colons, Program, SourceLine])
 
 # Object processors
 #
@@ -655,11 +655,20 @@ def main():
         print("Increment should be sensible")
         sys.exit(1)
 
+    if args.tap == "+auto":
+        filename_without_ext = splitext(args.filename)[0]
+        filename_without_path = basename(filename_without_ext)
+        args.tap = "taps/" + filename_without_path + ".tap"
+
     try:
         if args.filename != "-":
             program = parse_file(args.filename)
         else:
             program = parse_fh(sys.stdin)
+
+        if not program:
+            print("No program parsed", file=sys.stderr)
+            sys.exit(1)
 
         if args.find_vars:
             print(json.dumps(find_variables(program), indent=4))
@@ -688,7 +697,7 @@ def main():
         sys.exit(1)
     except BrokenPipeError:
         sys.exit(1)
-    except ValueError as e:
+    except Exception as e:
         print(f"Unexpected error: {e}")
         sys.exit(1)
 

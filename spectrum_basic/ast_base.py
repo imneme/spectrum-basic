@@ -102,6 +102,10 @@ def sane_bytes(s):
         return s.encode('ascii')
     elif s is None:
         return b""
+    if hasattr(s, '__iter__'):
+        return bjoin(s)
+    if isinstance(s, int):
+        return s.to_bytes(1, 'big')
     return bytes(s)
 
 def bjoin(items, sep=b""):

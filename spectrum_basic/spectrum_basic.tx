@@ -134,7 +134,7 @@ FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b
 TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';
 TwoArgFn: name=TwoArgName '(' expr1=Expression ',' expr2=Expression ')';
 CompValue: /PI\b/ | /RND\b/ | /INKEY\$/;
-BinValue: /BIN\b/ digits=/[01]+/;
+BinValue: /BIN\b/ ( digits=/[01]+/ )?;
 Fn: /FN\b/ name=VarSymbol '(' args*=Expression[','] ')';
 SpecialFn: TwoArgFn | CompValue | BinValue | Fn;
 
@@ -167,7 +167,9 @@ Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
     Restore | Pause | Border | Run | Clear | Randomize | Beep | Out |
     Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
     Plot | Draw | Circle | Print | Lprint | Input | Save |
-    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem;
+    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem | Colons ;
+
+Colons: colons=/:+/;
 
 // Statement types organized by their class patterns
 
@@ -187,7 +189,7 @@ Cat: /CAT\b/;
 // ==================================
 Goto: /GOTO\b/ expr=Expression | /GO TO\b/ expr=Expression;
 Gosub: /GOSUB\b/ expr=Expression | /GO SUB\b/ expr=Expression;
-Restore: /RESTORE\b/ expr=Expression;
+Restore: /RESTORE\b/ ( expr=Expression )?;
 Pause: /PAUSE\b/ expr=Expression;
 Border: /BORDER\b/ expr=Expression;
 
@@ -275,7 +277,7 @@ Merge: /MERGE\b/ expr=Expression;
 // ==================================
 // User-defined functions
 // ==================================
-DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params+=Variable[','] ')')? '=' expr=Expression;
+DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params*=Variable[','] ')')? '=' expr=Expression;
 
 // ==================================
 // Rem (special case - consumes to EOL)
