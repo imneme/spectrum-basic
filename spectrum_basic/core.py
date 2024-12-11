@@ -156,6 +156,8 @@ metamodel.register_obj_processors({
     "Pause": ap_standard,
     "Border": ap_standard,
     "Run": ap_standard,
+    "List": ap_standard,
+    "LList": ap_standard,
     "Clear": ap_standard,
     "Randomize": ap_standard,
     "ColourParam": ap_standard,

@@ -138,7 +138,7 @@ FunctionExpr: Function | SpecialFn | Primary;
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
 FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ | 
              /LN\b/ | /SGN\b/ | /SIN\b/ | /SQR\b/ | /TAN\b/ | /USR\b/ | /LEN\b/ |
-             /CODE\b/ | /VAL\b/ | /PEEK\b/ | 'CHR$' | 'STR$' | 'VAL$';
+             /CODE\b/ | /IN\b/ | /VAL\b/ | /PEEK\b/ | 'CHR$' | 'STR$' | 'VAL$';
 
 // Functions with multiple arguments
 TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';
@@ -174,8 +174,8 @@ SliceExpression: Slice | Expression;
 // Initial Statement Implementation
 // =====================================
 Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
-    Restore | Pause | Border | Run | Clear | Randomize | Beep | Out |
-    Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
+    Restore | Pause | Border | Run | List | LList | Clear | Randomize | Beep |
+    Out | Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
     Plot | Draw | Circle | Print | Lprint | Input | Save |
     Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
 
@@ -208,6 +208,8 @@ Border: /BORDER\b/ expr=Expression;
 Run: /RUN\b/ (expr=Expression)?;
 Clear: /CLEAR\b/ (expr=Expression)?;
 Randomize: /RANDOMIZE\b/ (expr=Expression)?;
+List: /LIST\b/ (expr=Expression)?;
+LList: /LLIST\b/ (expr=Expression)?;
 
 // ==================================
 // CLASS_08 - Two numeric expressions
@@ -229,7 +231,7 @@ Dim: /DIM\b/ name=VarSymbol '(' dims+=Expression[','] ')';
 // ==================================
 For: /FOR\b/ var=Variable '=' start=Expression /TO\b/ end=Expression (/STEP\b/ step=Expression)?;
 Next: /NEXT\b/ var=Variable;
-If: /IF\b/ condition=Expression /THEN\b/ statements+=Statement[':'];
+If: /IF\b/ condition=Expression /THEN\b/ statements+=JankyStatement[':'] after*=StmtIgnored;
 
 // ==================================
 // Colour control statements (CLASS_07)
