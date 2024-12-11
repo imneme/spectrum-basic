@@ -4,7 +4,13 @@
 
 // Basic program structure
 Program: /\s*/ lines*=SourceLine[/[\r\n]\s*/] /\s*/;
-SourceLine: (line_number=INT)? (label=Label ':')? statements*=Statement[':'];
+SourceLine: (line_number=INT)? (label=Label ':')? statements*=JankyStatement[':'];
+
+JankyStatement: ( before+=StmtIgnored )? actual=Statement ( after+=ColourCode )? | before+=StmtIgnored;
+StmtIgnored: Colon | ColourCode;
+Colon: /:/;
+ColourCode: /\\\{([ipfibo]\d+|vi|vn)+\}/;
+
 
 // =====================================
 // Syntactic Class Patterns, as described in the ROM
@@ -118,8 +124,11 @@ Neg: op='-' expr=UMinusExpr;
 
 // Power operator (priority 10)
 // PowerExpr: FunctionExpr ('^' FunctionExpr)*;
-PowerExpr: first=FunctionExpr rest*=PowerOpExpr;
-PowerOpExpr: op='^' expr=FunctionExpr;
+PowerExpr: first=JankyFunctionExpr rest*=PowerOpExpr;
+PowerOpExpr: op='^' expr=JankyFunctionExpr;
+
+// Evilness to handle people who want to colour their expressions
+JankyFunctionExpr: (before+=ColourCode)? actual=FunctionExpr (after+=ColourCode)?;
 
 // Functions and primary expressions
 FunctionExpr: Function | SpecialFn | Primary;
@@ -167,9 +176,8 @@ Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
     Restore | Pause | Border | Run | Clear | Randomize | Beep | Out |
     Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
     Plot | Draw | Circle | Print | Lprint | Input | Save |
-    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem | Colons ;
+    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
 
-Colons: colons=/:+/;
 
 // Statement types organized by their class patterns
 

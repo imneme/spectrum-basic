@@ -63,8 +63,17 @@ def uchar_to_byte(char):
         return b
     return char.encode('ascii')
 
-def strlit_to_bytes(s):
-    """Convert a string literal to ZX Spectrum BASIC bytes."""
+BYTE_AND_MAX_FOR_COLOURCODE = {
+    b'i': [b'\x10', 8], # Ink
+    b'p': [b'\x11', 8], # Paper
+    b'f': [b'\x12', 1], # Flash
+    b'b': [b'\x13', 1], # Bright
+    b'r': [b'\x14', 1], # Inverse (a.k.a. Reverse Video)
+    b'o': [b'\x15', 1], # Over
+}
+
+def echars_to_bytes(s):
+    """Convert escaped characters (and Unicode) to ZX Spectrum BASIC bytes."""
     # First, convert to bytes
     bstr = b''.join(uchar_to_byte(c) for c in s)
     # Then, escape any block characters
@@ -78,6 +87,25 @@ def strlit_to_bytes(s):
             raise ValueError(f"Character code too large, in \\{{{n}}}")
         return bstr((n,))
     bstr = re.sub(rb"\\\{(\d+)\}", number_to_byte, bstr)
+    # Escapes for ink, paper, flash, bright, inverse, and over
+    # - Special case, some folks use \{vi} and \{vn} for inverse video
+    def colourcodes_to_bytes(m):
+        codes = [m.group(1)[i:i+2] for i in range(0, len(m.group(1)), 2)]
+        pieces = []
+        for code in codes:
+            code = b'r1' if code == b'vi' else code
+            code = b'r0' if code == b'vn' else code
+            c, n = bytes((code[0],)), code[1]
+            try:
+                b, maxval = BYTE_AND_MAX_FOR_COLOURCODE[c]
+            except KeyError:
+                raise ValueError(f"Invalid colour code, in \\{chr(c)}{chr(n)}")
+            ni = n - ord('0')
+            if ni < 0 or ni > maxval:
+                raise ValueError(f"Colour code out of range, in \\{chr(c)}{chr(n)}")
+            pieces.append(b + bytes([ni]))
+        return b''.join(pieces)
+    bstr = re.sub(rb"\\\{((?:[ipfibo]\d+)|vi|vn)+\}", colourcodes_to_bytes, bstr)
     # \a..u becomes the corresponding UDG character (either case)
     def udg_to_byte(m):
         c = m.group(1).upper()
@@ -86,8 +114,12 @@ def strlit_to_bytes(s):
         return bytes((c[0] - 65 + 144,))
     bstr = re.sub(rb"\\([a-u])", udg_to_byte, bstr)
     # Doubled backslashes become a single backslash
-    bstr = bstr.replace(b'\\\\', b'\\')
+    return bstr.replace(b'\\\\', b'\\')
+
+def strlit_to_bytes(s):
+    """Convert a string literal to ZX Spectrum BASIC bytes."""
     # Then double any double quotes
+    bstr = echars_to_bytes(s)
     bstr = bstr.replace(b'"', b'""')
     return b'"' + bstr + b'"'
 

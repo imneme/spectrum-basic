@@ -106,6 +106,12 @@ def gen_ast_classes(output_file):
             return f"{self.label}:{'\t' if len(self.label.name) < 6 else ' '}{str_statements}"
         return f"\t{str_statements}"
 """)
+    gen_class("JankyStatement", ["before", "actual", "after"], no_token=True, superclass="Statement",
+              format="{sjoin(junk)}{nstr(actual)}{sjoin(after)}",
+              bytescode="[echars_to_bytes(j) for j in before] + [actual] + [echars_to_bytes(j) for j in after]")
+    gen_class("JankyFunctionExpr", ["before", "actual", "after"], no_token=True, superclass="Statement",
+              format="{sjoin(junk)}{nstr(actual)}{sjoin(after)}",
+              bytescode="[echars_to_bytes(j) for j in before] + [actual] + [echars_to_bytes(j) for j in after]")
 
     gen_class("Let", ["var", "expr"], 
               format="LET {var} = {expr}",
@@ -131,7 +137,8 @@ def gen_ast_classes(output_file):
               bytescode="[name, b'(', bjoin([bytes(p) + bytes((14,0,0,0,0,0)) for p in params], sep=b','), b')=', expr]",
               superclass="Statement")
     gen_class("PrintItem", ["value", "sep"], format="{nstr(value)}{nstr(sep)}", no_parent=True, no_token=True, bsep=None)
-    gen_class("Rem", ["comment"], is_leaf=True, format="REM {comment}", superclass="Statement")
+    gen_class("Rem", ["comment"], is_leaf=True, format="REM {comment}", 
+              bytescode="[echars_to_bytes(comment)]", superclass="Statement")
     gen_class("Label", ["name"], is_leaf=True, format="@{name}", init=["name[1:]"])
 
     gen_class("Variable", ["name"], is_leaf=True, init=["name.replace(' ', '').replace('\\t', '')"], format="{name}", superclass="Expression", no_token=True)

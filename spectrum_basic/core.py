@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Colons, Program, SourceLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
 
 # Object processors
 #
@@ -126,9 +126,18 @@ def ap_string_subscript(obj):
         return StringSubscript(obj.expr, obj.subscript)
     return obj.expr
 
+def ap_drop_junk(obj):
+    """Object processor to drop unneed prefix nodes"""
+    if not obj.before and not obj.after:
+        return obj.actual
+    return obj
+
 # Register object processors
 
 metamodel.register_obj_processors({
+    # Prefix statements
+    "JankyStatement": ap_drop_junk,
+    "JankyFunctionExpr": ap_drop_junk,
     # Subscript expressions
     "LitStringExpr": ap_string_subscript,
     "ParenExpr": ap_string_subscript,

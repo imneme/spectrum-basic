@@ -109,8 +109,12 @@ def sane_bytes(s):
     return bytes(s)
 
 def bjoin(items, sep=b""):
-    """Join a list of byte sequences with a separator"""
+    """Join a list of byte sequences (or convertibles) with a separator"""
     return sep.join(sane_bytes(item) for item in items)
+
+def sjoin(items, sep=""):
+    """Join a list of strings (or convertibles) with a separator"""
+    return sep.join(str(item) for item in items)
 
 class ASTNode:
     """Base class for all (non-textx) AST nodes"""
