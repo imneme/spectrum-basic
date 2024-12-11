@@ -188,6 +188,10 @@ metamodel.register_obj_processors({
 def parse_file(filename):
     """Parse a BASIC program from a file"""
     return metamodel.model_from_file(filename)
+
+def parse_fh(fh):
+    """Parse a BASIC program from a file-like object"""
+    return metamodel.model_from_str(fh.read())
     
 def parse_string(program):
     """Parse a BASIC program from a string"""
@@ -614,7 +618,8 @@ def main():
     import json
 
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
-    parser.add_argument("filename", nargs="?", help="Filename of BASIC program to parse (omit to read stdin)")
+    # parser.add_argument("filename", help="Filename of BASIC program to parse")
+    parser.add_argument("filename", help="Filename of BASIC program to parse (use - for stdin)")
     parser.add_argument("--show", action="store_true", help="Show the parsed program")
     parser.add_argument("--number", action="store_true", help="Number any unnumbered lines")
     parser.add_argument("--delabel", action="store_true", help="Number any unnumbered lines and remove labels")
@@ -632,9 +637,6 @@ def main():
     if not any((args.show, args.find_vars, args.tap)):
         args.show = True
 
-    if not args.filename:
-        args.filename = "/dev/stdin"
-
     # Sanity check args for renumbering, etc
     if args.start_line < 1 or args.start_line >= 10000:
         print("Start line must be in the range 1-9999")
@@ -644,7 +646,10 @@ def main():
         sys.exit(1)
 
     try:
-        program = parse_file(args.filename)
+        if args.filename != "-":
+            program = parse_file(args.filename)
+        else:
+            program = parse_fh(sys.stdin)
 
         if args.find_vars:
             print(json.dumps(find_variables(program), indent=4))
