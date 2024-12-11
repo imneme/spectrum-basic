@@ -3,7 +3,7 @@
 // Copyright (c) 2024 Melissa E. O'Neill. MIT License. NO WARRANTY.
 
 // Basic program structure
-Program: /\s*/ lines*=SourceLine[/\n\s*/] /\s*/;
+Program: /\s*/ lines*=SourceLine[/[\r\n]\s*/] /\s*/;
 SourceLine: (line_number=INT)? (label=Label ':')? statements*=Statement[':'];
 
 // =====================================
