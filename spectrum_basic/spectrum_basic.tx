@@ -4,7 +4,8 @@
 
 // Basic program structure
 Program: /\s*/ lines*=SourceLine[/[\r\n]\s*/] /\s*/;
-SourceLine: (line_number=INT)? (label=Label ':')? statements*=JankyStatement[':'];
+StmtIgnored: Colon | ColourCode;
+SourceLine: (line_number=INT)? (label=Label ':')? statements*=JankyStatement[':'] after*=StmtIgnored ;
 
 JankyStatement: ( before+=StmtIgnored )? actual=Statement ( after+=ColourCode )? | before+=StmtIgnored;
 StmtIgnored: Colon | ColourCode;

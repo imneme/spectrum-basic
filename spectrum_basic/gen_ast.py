@@ -93,17 +93,18 @@ def gen_ast_classes(output_file):
     gen_class("Program", ["lines"], format="{chr(10).join(str(line) for line in lines)}",
                 bytescode="[bjoin(lines)]", no_parent=True, no_token=True)
 
-    gen_class("SourceLine", ["line_number", "label", "statements"], 
-              bytescode="[line_to_bytes(line_number, bjoin(statements, b':'))]",
+    gen_class("SourceLine", ["line_number", "label", "statements", "after"], 
+              bytescode="[line_to_bytes(line_number, bjoin(statements, b':')), bjoin(after)]",
               no_token=True, dont_code=["__str__"], xcode="""
     def __str__(self):
         str_statements = ": ".join(str(stmt) for stmt in self.statements)
+        after = sjoin(self.after)
         if self.line_number and self.label:
-            return f"{self.line_number} {self.label}: {str_statements}"
+            return f"{self.line_number} {self.label}: {str_statements}{after}"
         elif self.line_number:
-            return f"{self.line_number}\t{str_statements}"
+            return f"{self.line_number}\t{str_statements}{after}"
         elif self.label:
-            return f"{self.label}:{'\t' if len(self.label.name) < 6 else ' '}{str_statements}"
+            return f"{self.label}:{'\t' if len(self.label.name) < 6 else ' '}{str_statements}{after}"
         return f"\t{str_statements}"
 """)
     gen_class("JankyStatement", ["before", "actual", "after"], no_token=True, superclass="Statement",
@@ -122,9 +123,9 @@ def gen_ast_classes(output_file):
               bytescode = "[var, b'=', start, token_to_byte('TO'), end] + ([token_to_byte('STEP'), step] if step else [])",
               superclass="Statement")
     gen_class("Next", ["var"], superclass="Statement")
-    gen_class("If", ["condition", "statements"], 
-              format="IF {condition} THEN {': '.join(str(stmt) for stmt in statements)}",
-              bytescode="[condition, token_to_byte('THEN'), bjoin(statements, sep=b':')]",
+    gen_class("If", ["condition", "statements", "after"], 
+              format="IF {condition} THEN {': '.join(str(stmt) for stmt in statements)}{sjoin(after)}",
+              bytescode="[condition, token_to_byte('THEN'), bjoin(statements, sep=b':'), bjoin(after)]",
               superclass="Statement")
     gen_class("Dim", ["name", "dims"], 
               format="DIM {name}({', '.join(str(d) for d in dims)})",
