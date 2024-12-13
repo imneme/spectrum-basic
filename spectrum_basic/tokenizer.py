@@ -50,7 +50,8 @@ BYTE_FOR_UNICODE = {
     "©": b"\x7f",
     "↑": b"^",
     "£": b"`",
-    **{uni: bytes([i+128]) for i, uni in enumerate(UNICODE_BLOCKS)}
+    **{uni: bytes([i+128]) for i, uni in enumerate(UNICODE_BLOCKS)},
+    **{chr(i+0x24b6): bytes([i+144]) for i in range(0, 21)},  # UDGs
 }
 UNICODE_BLOCK_FOR_BLOCK_ESCAPE = {e: u for e, u in zip(BLOCK_ESCAPES, UNICODE_BLOCKS)}
 

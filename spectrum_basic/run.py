@@ -18,7 +18,7 @@ class Environment:
         self.lines_map = lines_map
         self.gosub_stack = []
 
-    def let(self, var, value):
+    def let_var(self, var, value):
         """Set a variable"""
         self.vars.setdefault(var, {})['value'] = value
 
@@ -87,15 +87,26 @@ class LineMapper:
             return None
         return self.lines[self.line_numbers[i]]
 
+def flattened_statements(statements):
+    """Flatten a line of statements to handle IF statements"""
+    for stmt in statements:
+        match stmt:
+            case If(condition=cond, statements=stmts, parent=parent, after=after):
+                yield If(condition=cond, statements=[], parent=parent, after=None)
+                yield from flattened_statements(stmts)
+            case _:
+                yield stmt
+
 def run_prog(prog : Program, start=0):
     """Run a ZX Spectrum BASIC program"""
     # Set up the environment
     lines_map = LineMapper(prog)
     env = Environment(lines_map)
+    lines = [list(flattened_statements(line.statements)) for line in prog.lines]
     # Run the program
     line_idx, stmt_idx = lines_map.get_index(start), 0
     while line_idx is not None and line_idx < len(prog.lines):
-        stmts = prog.lines[line_idx].statements
+        stmts = lines[line_idx]
         where = run_stmts(env, stmts, line_idx, stmt_idx)
         line_idx, stmt_idx = where if where is not None else (line_idx + 1, 0)
     return env
@@ -115,7 +126,7 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
     match stmt:
         case Let(var=Variable(name=v), expr=expr):
             value = run_expr(env, expr)
-            env.let(v, value)
+            env.let_var(v, value)
         # Special case for GOSUB as it needs to push the return address
         case BuiltIn(action="GOSUB", args=args):
             if len(args) != 1:
@@ -136,7 +147,9 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
                 return (var_info['line_idx'], var_info['stmt_idx'])
         case If(condition=cond, statements=stmts):
             if run_expr(env, cond):
-                return run_stmts(env, stmts, line_idx, stmt_idx+1)
+                return # Keep executing the line
+            # Skip the rest of the statements, move to the next line
+            return (line_idx+1, 0)
         case Rem():
             pass
         case _:
