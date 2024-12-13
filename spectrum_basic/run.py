@@ -16,6 +16,7 @@ class Environment:
         self.array_vars = {}
         self.functions = {}
         self.lines_map = lines_map
+        self.gosub_stack = []
 
     def let(self, var, value):
         """Set a variable"""
@@ -30,7 +31,7 @@ class Environment:
             'line_idx': line_idx,
             'stmt_idx': stmt_idx,
         }
-    
+
     def get_var(self, var):
         """Get a variable"""
         try:
@@ -56,6 +57,17 @@ class Environment:
     def set_array(self, var, value, *indices):
         """Set an array element"""
         pass # TODO
+
+    def gosub_push(self, line_idx, stmt_idx):
+        """Push a GOSUB return address"""
+        self.gosub_stack.append((line_idx, stmt_idx))
+
+    def gosub_pop(self):
+        """Pop a GOSUB return address"""
+        try:
+            return self.gosub_stack.pop()
+        except IndexError:
+            raise ValueError("RETURN without GOSUB")
 
 class LineMapper:
     """Map line numbers lists of statements"""
@@ -104,6 +116,12 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
         case Let(var=Variable(name=v), expr=expr):
             value = run_expr(env, expr)
             env.let(v, value)
+        # Special case for GOSUB as it needs to push the return address
+        case BuiltIn(action="GOSUB", args=args):
+            if len(args) != 1:
+                raise ValueError("GOSUB requires exactly one argument")
+            env.gosub_push(line_idx, stmt_idx+1)
+            return (env.lines_map.get_index(run_expr(env, args[0])), 0)
         case BuiltIn(action=action, args=args):
             handler = BUILTIN_MAP.get(action)
             if handler is None:
@@ -245,6 +263,8 @@ def run_print(env, args):
 # Maps names of builtins to their corresponding functions
 BUILTIN_MAP = {
     "GOTO": run_goto,
+    "RETURN": lambda env, args: env.gosub_pop(),
+    "STOP": lambda env, args: (float('inf'), 0),
     "PRINT": run_print,
     # CLS send ansi to clear screen and home cursor
     "CLS": lambda env, args: print("\x1b[2J\x1b[H"),
