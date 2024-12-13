@@ -236,3 +236,6 @@ def speccy_quote(s):
 class Expression(ASTNode):
     pass
 
+def is_expression(obj):
+    """Determine if an object is an expression"""
+    return isinstance(obj, Expression) or (isinstance(obj, BuiltIn) and obj.is_expr)
