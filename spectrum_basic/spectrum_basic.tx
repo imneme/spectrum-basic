@@ -3,7 +3,9 @@
 // Copyright (c) 2024 Melissa E. O'Neill. MIT License. NO WARRANTY.
 
 // Basic program structure
-Program: /\s*/ lines*=SourceLine[/[\r\n]\s*/] /\s*/;
+Program: /\s*/ lines*=ProgLine[/[\r\n]\s*/] /\s*/;
+ProgLine: SourceLine | CommentLine;
+CommentLine: char=/[#']/ comment=/.*/;
 StmtIgnored: Colon | ColourCode;
 SourceLine: (line_number=INT)? (label=Label ':')? statements*=JankyStatement[':'] after*=StmtIgnored ;
 
@@ -160,7 +162,7 @@ String: value=/"(?:[^"\n]|"")*"/;
 // Variables and Array references
 ArrayRef: name=VarSymbol '(' subscripts+=SliceExpression[','] ')';
 Variable: name=VarSymbol;
-VarSymbol: /[A-Z]([A-Z0-9]*|[ \t]+(?!THEN))+\$?/;
+VarSymbol: /[A-Z]([A-Z0-9_]*|[ \t]+(?!THEN))+\$?/;
 VarDest: ArrayRef | Variable;
 
 Slice: 
@@ -288,7 +290,7 @@ Merge: /MERGE\b/ expr=Expression;
 // ==================================
 // User-defined functions
 // ==================================
-DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params*=Variable[','] ')')? '=' expr=Expression;
+DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params*=VarSymbol[','] ')')? '=' expr=Expression;
 
 // ==================================
 // Rem (special case - consumes to EOL)

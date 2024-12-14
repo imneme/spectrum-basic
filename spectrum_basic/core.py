@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
 
 # Object processors
 #
@@ -267,11 +267,11 @@ def find_variables(program):
             elif isinstance(obj, DefFn):
                 name = used_var("fn", obj.name)
                 # Push the names of the unbound parameters
-                lparams = [p.name.lower() for p in obj.params]
+                lparams = [p.lower() for p in obj.params]
                 newvars = {}
                 for lparam, param in zip(lparams, obj.params):
-                    used_var("param", param.name)
-                    used_var("param", param.name, newvars)
+                    used_var("param", param)
+                    used_var("param", param, newvars)
                 stack.append((name, lparams, vars))
                 vars = newvars
         elif event == Walk.LEAVING:
@@ -296,7 +296,10 @@ def list_program(program, file=None):
     """List the program in a BASIC-like format"""
     for line in program.lines:
         spacer = "\t"
-        if line.line_number and line.label:
+        if isinstance(line, CommentLine):
+            print(f"{line}", file=file)
+            continue
+        elif line.line_number and line.label:
             print(f"{line.line_number} {line.label}:", end="", file=file)
             spacer = " "
         elif line.line_number:
@@ -324,13 +327,13 @@ def var_generator(start='A', one_letter=True, taken_names=None):
     pos = 0
     cycles = 0
     while cycles == 0 or not one_letter:
-        name = chr((pos + offset) % 26 + ord('A'))
+        name = chr((pos + offset) % 26 + ord('a'))
         if cycles > 0:
             # Convert to base 36
             name += baseN(cycles-1, 36)
         if name not in taken_names:
             taken_names.add(name)
-            yield name
+            yield name.upper()
         pos += 1
         if pos >= 26:
             pos = 0
@@ -427,8 +430,8 @@ def remap_variables(program, remapping):
                     lowname = remapped.lower()
                 # Push current parameter mappings and create new ones
                 param_state = {}
-                for param in obj.params:
-                    lparam = param.name.lower()
+                for i, param in enumerate(obj.params):
+                    lparam = param.lower()
                     if lparam in remapping["numeric"]:
                         param_state[lparam] = remapping["numeric"][lparam]
                         # Remove from current mapping while in function
@@ -437,7 +440,7 @@ def remap_variables(program, remapping):
                     param_remap = remapping["fn-params"][lowname]
                     if lparam in param_remap:
                         mparam = param_remap[lparam]
-                        param.name = mparam
+                        obj.params[i] = mparam
                         remapping["numeric"][lparam] = mparam
                 stack.append((param_state, param_remap.keys()))
         elif event == Walk.LEAVING:
@@ -461,6 +464,8 @@ def renumber(program, start_line=10, increment=10):
     new_line = start_line
     last_line = None
     for line in program.lines:
+        if isinstance(line, CommentLine):
+            continue
         curr_line = line.line_number
         if curr_line is not None:
             if last_line is not None and curr_line <= last_line:
@@ -497,8 +502,12 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
     """Number any unnumbered lines and optionally remove labels"""
     # If a start line is specified, and the first line is not numbered
     # edit the first line to use the start line
-    if start_line is not None and program.lines and not program.lines[0].line_number:
-        program.lines[0].line_number = start_line
+    # Find index of first non CommentLine
+    first_line = next((i for i, line in enumerate(program.lines) if not isinstance(line, CommentLine)), None)
+    if first_line is None:
+        raise ValueError("No actual code lines in program")
+    if start_line is not None and not program.lines[first_line].line_number:
+        program.lines[first_line].line_number = start_line
 
     # First pass: build line number mapping for all lines
     line_map = {}  # Maps labels to line numbers
@@ -506,6 +515,8 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
     lines_to_number = []  # List of (position, label, is_blank) for lines needing numbers
 
     for i, line in enumerate(program.lines):
+        if isinstance(line, CommentLine):
+            continue
         is_blank = not line.statements
         if line.line_number:
             if numbered_lines and line.line_number <= numbered_lines[-1][1]:
@@ -542,7 +553,7 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
         prev_pos, prev_num, prev_blank = next_pos, next_num, next_blank
 
     # Now, filter out any lines we chose not to number (blank ones)
-    program.lines = [line for line in program.lines if line.line_number]
+    program.lines = [line for line in program.lines if isinstance(line, CommentLine) or line.line_number]
 
     # Second pass: update label references and optionally remove labels
     deadly_magic = False
@@ -637,11 +648,13 @@ def main():
     import argparse
     import sys
     import json
+    from .run import run_program
 
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
     # parser.add_argument("filename", help="Filename of BASIC program to parse")
     parser.add_argument("filename", help="Filename of BASIC program to parse (use - for stdin)")
     parser.add_argument("--show", action="store_true", help="Show the parsed program")
+    parser.add_argument("--run", action="store_true", help="Run the program (where possible)")
     parser.add_argument("--number", action="store_true", help="Number any unnumbered lines")
     parser.add_argument("--delabel", action="store_true", help="Number any unnumbered lines and remove labels")
     parser.add_argument("--renumber", action="store_true", help="Renumber the program")
@@ -655,8 +668,12 @@ def main():
     parser.add_argument("--tap-line", help="Run the program from a specific line", type=int, default=-1)
     args = parser.parse_args()
 
-    if not any((args.show, args.find_vars, args.tap)):
+    if not any((args.show, args.find_vars, args.tap, args.run)):
         args.show = True
+
+    # Currently running the code requires it have no labels, as does making a TAP file
+    if args.run or args.tap:
+        args.delabel = True
 
     # Sanity check args for renumbering, etc
     if args.start_line < 1 or args.start_line >= 10000:
@@ -670,6 +687,11 @@ def main():
         filename_without_ext = splitext(args.filename)[0]
         filename_without_path = basename(filename_without_ext)
         args.tap = "taps/" + filename_without_path + ".tap"
+
+    # Make sure the tap file ends with .tap
+    if args.tap and not args.tap.endswith(".tap"):
+        print("TAP filename must end with .tap")
+        sys.exit(1)
 
     try:
         if args.filename != "-":
@@ -695,6 +717,8 @@ def main():
             code = bytes(program)
             tap = make_program_tap(args.tap_name, code, autostart=args.tap_line)
             write_tap(tap, args.tap)
+        if args.run:
+            run_program(program)
 
     except textx.exceptions.TextXSyntaxError as e:
         # Print GCC-style error message

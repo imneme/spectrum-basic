@@ -9,21 +9,87 @@ def is_stringvar(var):
     """Check if a variable is a string variable"""
     return var.endswith("$")
 
+def find_deffns(prog):
+    """Find all the DEF FN functions in the program"""
+    map = {}
+    for event, node in walk(prog):
+        if event != Walk.ENTERING:
+            continue
+        if isinstance(node, DefFn):
+            if node.name in map:
+                raise ValueError(f"Function {node.name} already defined")
+            map[node.name] = node
+    return map
+
+class ProgramData:
+    """Data for a ZX Spectrum BASIC program"""
+    def __init__(self, prog):
+        # call static method to gather the data
+        data, index = self._gather_data(prog)
+        self.data = data
+        self.indexForLine = index
+        self.line_numbers = sorted(index.keys())
+        self.index = 0
+    
+    @staticmethod
+    def _gather_data(prog):
+        data = []
+        current_line = 0
+        dataIndex = {0: 0} # maps line numbers to positions in the global list of data items
+        for event, node in walk(prog):
+            if event != Walk.ENTERING:
+                continue
+            match node:
+                case SourceLine(line_number=ln):
+                    if ln:
+                        current_line = ln
+                case Data(items=items):
+                    dataIndex.setdefault(current_line, len(data))
+                    data.extend(items)
+        return data, dataIndex
+
+    
+    def restore(self, line_number=0):
+        """Restore the data index to the start of a line"""
+        if (index := self.indexForLine.get(line_number)) is not None:
+            self.index = index
+            return
+        # Need to find the next line number
+        line_index = bisect.bisect_left(self.line_numbers, line_number)
+        if line_index == len(self.line_numbers):
+            self.index = len(self.data)
+            return
+        next_line = self.line_numbers[line_index]
+        self.index = self.indexForLine[next_line]
+    
+    def next(self):
+        """Get the next data item"""
+        if self.index >= len(self.data):
+            raise ValueError("Out of DATA")
+        value = self.data[self.index]
+        self.index += 1
+        return value
+
 class Environment:
     """Environment for running ZX Spectrum BASIC programs"""
-    def __init__(self, lines_map):
+    def __init__(self, lines_map, functions={}, data=None):
         self.vars = {}
         self.array_vars = {}
-        self.functions = {}
+        self.functions = functions
         self.lines_map = lines_map
         self.gosub_stack = []
+        self.data = data
 
     def let_var(self, var, value):
         """Set a variable"""
+        if not isinstance(var, str):
+            raise ValueError(f"Variable name {var} is not a string")
         self.vars.setdefault(var, {})['value'] = value
 
     def for_loop(self, var, line_idx, stmt_idx, start, end, step):
         """Start a FOR loop"""
+        if not isinstance(var, str):
+            raise ValueError(f"Variable name {var} is not a string")
         self.vars[var] = {
             'value': start,
             'end': end,
@@ -32,19 +98,50 @@ class Environment:
             'stmt_idx': stmt_idx,
         }
 
+    def get_fn(self, name):
+        """Get a function"""
+        if not isinstance(name, str):
+            raise ValueError(f"Function name {name} is not a string")
+        try:
+            return self.functions[name]
+        except KeyError as e:
+            raise ValueError(f"Function {name} not defined") from e
+
     def get_var(self, var):
         """Get a variable"""
+        if not isinstance(var, str):
+            raise ValueError(f"Variable name {var} is not a string")
         try:
             return self.vars[var]['value']
-        except KeyError:
-            raise ValueError(f"Variable {var} not defined")
+        except KeyError as e:
+            raise ValueError(f"Variable {var} not defined in {self.vars}") from e
+    
+    def save_var(self, var):
+        """Save a variable (on an internal per-variable stack)"""
+        if not isinstance(var, str):
+            raise ValueError(f"Variable name {var} is not a string")
+        dict = self.vars.get(var)
+        self.vars[var] = {"stashed": dict}
+
+    def restore_var(self, var):
+        """Restore a variable (from an internal per-variable stack)"""
+        if not isinstance(var, str):
+            raise ValueError(f"Variable name {var} is not a string")
+        try:
+            dict = self.vars[var].pop("stashed")
+            if dict is None:
+                del self.vars[var]
+            else:
+                self.vars[var] = dict
+        except KeyError as e:
+            raise ValueError(f"No stashed value for variable {var}") from e
         
     def get_var_all(self, var):
         """Get all the information about a variable"""
         try:
             return self.vars[var]
-        except KeyError:
-            raise ValueError(f"Variable {var} not defined")
+        except KeyError as e:
+            raise ValueError(f"Variable {var} not defined") from e
             
     def dim(self, var, *dims):
         """Create an array"""
@@ -66,21 +163,34 @@ class Environment:
         """Pop a GOSUB return address"""
         try:
             return self.gosub_stack.pop()
-        except IndexError:
-            raise ValueError("RETURN without GOSUB")
+        except IndexError as e:
+            raise ValueError("RETURN without GOSUB") from e
 
 class LineMapper:
     """Map line numbers lists of statements"""
-    def __init__(self, prog):
+    def __init__(self, lines):
         self.lines = {}
-        for i, line in enumerate(prog.lines):
-            self.lines[line.line_number] = i
+        for i, line in enumerate(lines):
+            # Only include lines that actually have a line_number
+            if line.line_number:
+                self.lines[line.line_number] = i
         self.line_numbers = sorted(self.lines.keys())
+
+    def nearest_line(self, line_number):
+        """Get the nearest line number"""
+        if not self.line_numbers and line_number == 0:
+            return 0
+        i = bisect.bisect_left(self.line_numbers, line_number)
+        if i == len(self.line_numbers):
+            return None
+        return self.line_numbers[i]
     
     def get_index(self, line_number):
         """Get the index of a line number, if not found return the index of the next line"""
         if (i := self.lines.get(line_number)) is not None:
             return i
+        if line_number == 0:
+            return 0
         # Not in the list, so find the the actual next line after line_number
         i = bisect.bisect_left(self.line_numbers, line_number)
         if i == len(self.line_numbers):
@@ -97,15 +207,19 @@ def flattened_statements(statements):
             case _:
                 yield stmt
 
-def run_prog(prog : Program, start=0):
+def run_program(prog : Program, start=0):
     """Run a ZX Spectrum BASIC program"""
     # Set up the environment
-    lines_map = LineMapper(prog)
-    env = Environment(lines_map)
-    lines = [list(flattened_statements(line.statements)) for line in prog.lines]
+    prog_lines = [line for line in prog.lines if not isinstance(line, CommentLine)]
+    if not prog_lines:
+        raise ValueError("Empty program (no non-meta-comment lines)")
+    lines_map = LineMapper(prog_lines)
+    lines = [list(flattened_statements(line.statements)) for line in prog_lines]
+    functions = find_deffns(prog)
+    env = Environment(lines_map, functions, data=ProgramData(prog))
     # Run the program
-    line_idx, stmt_idx = lines_map.get_index(start), 0
-    while line_idx is not None and line_idx < len(prog.lines):
+    line_idx, stmt_idx = (lines_map.get_index(start), 0) if start else (0, 0)
+    while line_idx is not None and line_idx < len(lines):
         stmts = lines[line_idx]
         where = run_stmts(env, stmts, line_idx, stmt_idx)
         line_idx, stmt_idx = where if where is not None else (line_idx + 1, 0)
@@ -120,13 +234,20 @@ def run_stmts(env, stmts, line_idx=0, stmt_idx=0):
             return jump
     return None
 
+def run_let(env, vardest, expr):
+    """Run a LET statement"""
+    value = run_expr(env, expr)
+    match vardest:
+        case Variable(name=v):
+            env.let_var(v, value)
+        case ArrayRef(name=v, subscripts=subs):
+            raise ValueError("Arrays not supported yet")
 
 def run_stmt(env, stmt, line_idx, stmt_idx):
     """Run a single statement"""
     match stmt:
-        case Let(var=Variable(name=v), expr=expr):
-            value = run_expr(env, expr)
-            env.let_var(v, value)
+        case Let(var=vardest, expr=expr):
+            run_let(env, vardest, expr)
         # Special case for GOSUB as it needs to push the return address
         case BuiltIn(action="GOSUB", args=args):
             if len(args) != 1:
@@ -150,8 +271,14 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
                 return # Keep executing the line
             # Skip the rest of the statements, move to the next line
             return (line_idx+1, 0)
+        case Read(vars=vars):
+            run_read(env, vars)
         case Rem():
-            pass
+            pass # Comments are ignored
+        case Data():
+            pass # Data is handled by the ProgramData class
+        case DefFn():
+            pass # Functions are found by find_deffns at the start
         case _:
             raise ValueError(f"Statement {stmt} is not supported")
 
@@ -186,6 +313,9 @@ def run_expr(env, expr):
             return s
         case Variable(name=v):
             return env.get_var(v)
+        case ArrayRef(name=v, subscripts=[sub]):
+            # For now, assume it's a string
+            return run_slice(env, env.get_var(v), sub)
         case BuiltIn(action=action, args=args):
             (num_args, handler) = FBUILTIN_MAP.get(action)
             if num_args is not None and len(args) != num_args:
@@ -193,12 +323,26 @@ def run_expr(env, expr):
             if handler is None:
                 raise ValueError(f"The {action} function is not supported")
             return handler(env, args)
+        case Fn(name=name, args=args):
+            return run_fn(env, name, args)
         case BinaryOp(op=op, lhs=lhs, rhs=rhs):
             return BINOP_MAP[op](run_expr(env, lhs), run_expr(env, rhs))
         case UnaryOp(op=op, expr=expr):
             return UNOP_MAP[op](run_expr(env, expr))
+        case StringSubscript(expr=expr, index=index):
+            value = run_expr(env, expr)
+            return run_slice(env, value, index)
         case _:
             raise ValueError(f"Expression {expr} is not supported")
+
+
+def run_slice(env, value, index):
+    if isinstance(index, Slice):
+        min = run_expr(env, index.min) if index.min is not None else 1
+        max = run_expr(env, index.max) if index.max is not None else len(value)
+        return value[min-1:max]
+    else:
+        return value[run_expr(env, index)-1]
 
 FBUILTIN_MAP = {
     "PI":   (0, lambda env, args: math.pi),
@@ -209,7 +353,7 @@ FBUILTIN_MAP = {
     "ATN":  (1, lambda env, args: math.atan(run_expr(env, args[0]))),
     "COS":  (1, lambda env, args: math.cos(run_expr(env, args[0]))),
     "EXP":  (1, lambda env, args: math.exp(run_expr(env, args[0]))),
-    "INT":  (1, lambda env, args: int(run_expr(env, args[0]))),
+    "INT":  (1, lambda env, args: int(math.floor(run_expr(env, args[0])))),
     "LN":   (1, lambda env, args: math.log(run_expr(env, args[0]))),
     "SGN":  (1, lambda env, args: int(math.copysign(1, run_expr(env, args[0])))),
     "SIN":  (1, lambda env, args: math.sin(run_expr(env, args[0]))),
@@ -226,8 +370,21 @@ FBUILTIN_MAP = {
     "VAL$": (1, lambda env, args: ""), # TODO
 }
 
-
-
+def run_fn(env, name, args):
+    """Handle FN, run a user-defined function"""
+    fn = env.get_fn(name)
+    params = fn.params
+    expr = fn.expr
+    if len(params) != len(args):
+        raise ValueError(f"Function {name} expects {len(params)} arguments")
+    for param, arg in zip(params, args):
+        binding = run_expr(env, arg)
+        env.save_var(param)
+        env.let_var(param, binding)
+    result = run_expr(env, expr)
+    for param in reversed(params):
+        env.restore_var(param)
+    return result
 
 def run_goto(env, args):
     """Run a GOTO statement"""
@@ -269,9 +426,19 @@ def run_print(env, args):
             case _:
                 raise ValueError(f"Unsupported print separator {sep}")
     # After printint everything, what was the the last sep used?
-    if sep is None or sep == "'":
+    if sep is None:
         print()
 
+def run_read(env, args):
+    """Run a READ statement"""
+    for arg in args:
+        expr = env.data.next()
+        value = run_expr(env, expr)
+        match arg:
+            case Variable(name=v):
+                env.let_var(v, value)
+            case _:
+                raise ValueError(f"READ requires variable, got {arg}")
 
 # Maps names of builtins to their corresponding functions
 BUILTIN_MAP = {
@@ -280,7 +447,7 @@ BUILTIN_MAP = {
     "STOP": lambda env, args: (float('inf'), 0),
     "PRINT": run_print,
     # CLS send ansi to clear screen and home cursor
-    "CLS": lambda env, args: print("\x1b[2J\x1b[H"),
+    "CLS": lambda env, args: print("\x1b[2J\x1b[H", end=""),
 }
 
 if __name__ == "__main__":
@@ -292,4 +459,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.filename) as f:
         prog = parse_string(f.read())
-    env = run_prog(prog)
+    env = run_program(prog)

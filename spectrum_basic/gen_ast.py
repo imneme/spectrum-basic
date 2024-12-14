@@ -107,6 +107,7 @@ def gen_ast_classes(output_file):
             return f"{self.label}:{'\t' if len(self.label.name) < 6 else ' '}{str_statements}{after}"
         return f"\t{str_statements}"
 """)
+    gen_class("CommentLine", ["char", "comment"], format="{char}{comment}", bytescode="[]", no_token=True, is_leaf=True)
     gen_class("JankyStatement", ["before", "actual", "after"], no_token=True, superclass="Statement",
               format="{sjoin(junk)}{nstr(actual)}{sjoin(after)}",
               bytescode="[echars_to_bytes(j) for j in before] + [actual] + [echars_to_bytes(j) for j in after]")
@@ -135,7 +136,7 @@ def gen_ast_classes(output_file):
     gen_class("Read", ["vars"], format="READ {', '.join(str(v) for v in vars)}", bytescode="[bjoin(vars, sep=b',')]", superclass="Statement")
     gen_class("DefFn", ["name", "params", "expr"], 
               format="DEF FN {name}({', '.join(str(p) for p in params)}) = {expr}", keyword="DEF FN",
-              bytescode="[name, b'(', bjoin([bytes(p) + bytes((14,0,0,0,0,0)) for p in params], sep=b','), b')=', expr]",
+              bytescode="[name, b'(', bjoin([sane_bytes(p) + bytes((14,0,0,0,0,0)) for p in params], sep=b','), b')=', expr]",
               superclass="Statement")
     gen_class("PrintItem", ["value", "sep"], format="{nstr(value)}{nstr(sep)}", no_parent=True, no_token=True, bsep=None)
     gen_class("Rem", ["comment"], is_leaf=True, format="REM {comment}", 
@@ -149,9 +150,9 @@ def gen_ast_classes(output_file):
                 bytescode="[strlit_to_bytes(value)]")
     gen_class("BinValue", ["digits"], keyword="BIN", is_leaf=True)
     gen_class("ArrayRef", ["name", "subscripts"], format="{name}({', '.join(str(s) for s in subscripts)})",
-              bytescode="[name, b'(', bjoin(subscripts, sep=b','), b')']", no_token=True)
+              bytescode="[name, b'(', bjoin(subscripts, sep=b','), b')']", no_token=True, superclass="Expression")
     gen_class("Fn", ["name", "args"], format="FN {name}({', '.join(str(arg) for arg in args)})",
-              bytescode="[name, b'(', bjoin(args, sep=b','), b')']")
+              bytescode="[name, b'(', bjoin(args, sep=b','), b')']", superclass="Expression")
     gen_class("Slice", ["min", "max"], dont_code=["__str__","__bytes__"], xcode="""
     def __str__(self):
         if self.min is None:
@@ -172,7 +173,7 @@ def gen_ast_classes(output_file):
               bytescode="([expr] if isinstance(expr, String) else [b'(', expr, b')']) + [b'(', index, b')']",
               no_token=True, no_parent=True, superclass="Expression")
     
-    gen_class("BinaryOp", ["op", "lhs", "rhs"], no_parent=True, dont_code=["__str__", "__bytes__"], xcode="""
+    gen_class("BinaryOp", ["op", "lhs", "rhs"], no_parent=True, dont_code=["__str__", "__bytes__"], superclass="Expression", xcode="""
     def __str__(self):
         # Format left side
         lhs_str = str(self.lhs)
@@ -199,7 +200,7 @@ def gen_ast_classes(output_file):
         
         return blhs + bop + brhs
 """)
-    gen_class("UnaryOp", ["op", "expr"], dont_code=["__str__", "__bytes__"], xcode="""
+    gen_class("UnaryOp", ["op", "expr"], dont_code=["__str__", "__bytes__"], superclass="Expression", xcode="""
     def __str__(self):
         expr_str = str(self.expr)
         if isinstance(self.expr, BinaryOp) and needs_parens(self.expr, self, False):
