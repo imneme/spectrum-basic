@@ -16,6 +16,7 @@ A Python toolkit for parsing, transforming, and manipulating ZX Spectrum BASIC p
 - Detailed variable analysis
 - Pretty printing with authentic Spectrum BASIC formatting
 - TAP file generation for loading programs on a real Spectrum
+- Run a subset of BASIC programs locally for algorithm testing
 
 ## Installation
 
@@ -60,6 +61,9 @@ speccy-basic program.bas --find-vars
 
 # Generate a TAP file
 speccy-basic program.bas --tap output.tap --tap-name "My Program"
+
+# Run a program locally
+speccy-basic program.bas --run
 ```
 
 ### As a Library
@@ -164,14 +168,14 @@ Variable(name=str)          # Variable reference (e.g., "A" or "A$")
 Number(value=int|float)     # Numeric literal
 Label(name=str)             # Label reference (e.g., "@loop")
 
-# Built-in commands/functions
+# Built-in commands/functions (most statements)
 BuiltIn(action=str,         # Command name (e.g., "PRINT", "GOTO")
         args=tuple)         # Command arguments
 
-# Special cases
-ColoredBuiltin(action=str,  # Graphics commands (PLOT, DRAW, CIRCLE)
-              colors=list,  # Color parameters
-              args=tuple)   # Coordinates/dimensions
+# Statements that don't just take expressions usually have their own AST nodes
+# for example:
+Let(var=Variable|ArrayRef,  # Assignment statement
+    expr=Expression)        # Expression to assign
 
 # Program structure
 Program(lines=list)         # Complete program
@@ -180,8 +184,6 @@ SourceLine(                 # Single line of code
     label=Label|None,
     statements=list)
 ```
-
-(Note: Currently `Program` and `SourceLine` are textX automagic classes rather than custom AST nodes. This only matters if you want to use them in pattern matching, which is unlikely.)
 
 Example pattern matching:
 
