@@ -34,15 +34,17 @@ class ProgramInfo:
 
     def _find_info(self, prog):
         """Find all the DEF FN functions in the program"""
-        map = {}
+        fn_map = {}
         for event, node in walk(prog):
-            if event != Walk.ENTERING:
-                continue
-            if isinstance(node, DefFn):
-                if node.name in map:
-                    raise ValueError(f"Function {node.name} already defined")
-                map[node.name.lower()] = node
-        self.functions = map
+            match event:
+                case Walk.ENTERING:
+                    match node:
+                        case DefFn(name=name, params=params, expr=expr):
+                            if name in fn_map:
+                                raise ValueError(f"Function {name} already defined")
+                            fn_map[name.lower()] = node
+                    
+        self.functions = fn_map
 
 class ProgramData:
     """Data for a ZX Spectrum BASIC program"""
