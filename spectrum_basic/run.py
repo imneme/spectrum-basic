@@ -17,8 +17,13 @@ class ProgramInfo:
             raise ValueError("Empty program (no non-meta-comment lines)")
         self.lines_map = LineMapper(lines)
         lines = [list(self._flattened_statements(line.statements)) for line in lines]
+        posForNode = {
+            id(node): (line_idx, stmt_idx)
+                for line_idx, line in enumerate(lines)
+                    for stmt_idx, node in enumerate(line)
+        }
         self.lines = lines
-        self._find_info(prog)
+        self._find_info(prog, posForNode)
         self.data = ProgramData(prog)
     
     @staticmethod
@@ -32,9 +37,11 @@ class ProgramInfo:
                 case _:
                     yield stmt
 
-    def _find_info(self, prog):
-        """Find all the DEF FN functions in the program"""
-        fn_map = {}
+    def _find_info(self, prog, posForNode):
+        """Find information about program, incuding function definitions, and NEXT statements"""
+        fn_map = {}       # Maps function names to their AST DefFn nodes
+        active_for = {}   # Maps loop variable names to the most recent FOR statement
+        nearest_next = {} # Maps AST For nodes to the (stmt_idx, line_idx) just past the nearest NEXT
         for event, node in walk(prog):
             match event:
                 case Walk.ENTERING:
@@ -43,8 +50,18 @@ class ProgramInfo:
                             if name in fn_map:
                                 raise ValueError(f"Function {name} already defined")
                             fn_map[name.lower()] = node
+                        case For(var=Variable(name=v), start=start, end=end, step=step):
+                            active_for[v] = node
+                        case Next(var=Variable(name=v)):
+                            prior_for = active_for.get(v)
+                            if prior_for is None:
+                                pass  # Convoluted but valid BASIC: NEXT textually before FOR, perhaps a GOTO gets us here
+                            elif id(prior_for) not in nearest_next:
+                                line_idx, stmt_idx = posForNode[id(node)]
+                                nearest_next[id(prior_for)] = (line_idx, stmt_idx+1)
                     
         self.functions = fn_map
+        self.nearest_next = nearest_next
 
 class ProgramData:
     """Data for a ZX Spectrum BASIC program"""
@@ -279,12 +296,25 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
                 raise ValueError(f"The {action} command is not supported")
             return handler(env, args)
         case For(var=Variable(name=v), start=start, end=end, step=step):
-            env.for_loop(v, line_idx, stmt_idx+1, run_expr(env, start), run_expr(env, end), run_expr(env, step) if step is not None else 1)
+            start = run_expr(env, start)
+            end = run_expr(env, end)
+            step = run_expr(env, step) if step is not None else 1
+            env.for_loop(v, line_idx, stmt_idx+1, start, end, step)
+            if (end < start and step >= 0) or (end > start and step < 0):
+                dest = env.prog_info.nearest_next.get(id(stmt))
+                if dest is None:
+                    raise ValueError(f"FOR without NEXT for {v}")
+                return dest
         case Next(var=Variable(name=v)):
             var_info = env.get_var_all(v)
             var_info['value'] += var_info['step']
-            if var_info['value'] <= var_info['end']:
-                return (var_info['line_idx'], var_info['stmt_idx'])
+            end = var_info['end']
+            step = var_info['step']
+            if (step >= 0 and var_info['value'] > end) or (step < 0 and var_info['value'] < end):
+                # Continue to the next statement
+                return
+            # Jump back to the FOR statement
+            return (var_info['line_idx'], var_info['stmt_idx'])
         case If(condition=cond, statements=stmts):
             if run_expr(env, cond):
                 return # Keep executing the line
