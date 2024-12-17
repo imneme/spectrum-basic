@@ -18,7 +18,7 @@ def find_deffns(prog):
         if isinstance(node, DefFn):
             if node.name in map:
                 raise ValueError(f"Function {node.name} already defined")
-            map[node.name] = node
+            map[node.name.lower()] = node
     return map
 
 class ProgramData:
@@ -84,12 +84,14 @@ class Environment:
         """Set a variable"""
         if not isinstance(var, str):
             raise ValueError(f"Variable name {var} is not a string")
+        var = var.lower()
         self.vars.setdefault(var, {})['value'] = value
 
     def for_loop(self, var, line_idx, stmt_idx, start, end, step):
         """Start a FOR loop"""
         if not isinstance(var, str):
             raise ValueError(f"Variable name {var} is not a string")
+        var = var.lower()
         self.vars[var] = {
             'value': start,
             'end': end,
@@ -103,6 +105,7 @@ class Environment:
         if not isinstance(name, str):
             raise ValueError(f"Function name {name} is not a string")
         try:
+            name = name.lower()
             return self.functions[name]
         except KeyError as e:
             raise ValueError(f"Function {name} not defined") from e
@@ -112,6 +115,7 @@ class Environment:
         if not isinstance(var, str):
             raise ValueError(f"Variable name {var} is not a string")
         try:
+            var = var.lower()
             return self.vars[var]['value']
         except KeyError as e:
             raise ValueError(f"Variable {var} not defined in {self.vars}") from e
@@ -120,6 +124,7 @@ class Environment:
         """Save a variable (on an internal per-variable stack)"""
         if not isinstance(var, str):
             raise ValueError(f"Variable name {var} is not a string")
+        var = var.lower()
         dict = self.vars.get(var)
         self.vars[var] = {"stashed": dict}
 
@@ -128,6 +133,7 @@ class Environment:
         if not isinstance(var, str):
             raise ValueError(f"Variable name {var} is not a string")
         try:
+            var = var.lower()
             dict = self.vars[var].pop("stashed")
             if dict is None:
                 del self.vars[var]
@@ -139,6 +145,7 @@ class Environment:
     def get_var_all(self, var):
         """Get all the information about a variable"""
         try:
+            var = var.lower()
             return self.vars[var]
         except KeyError as e:
             raise ValueError(f"Variable {var} not defined") from e
