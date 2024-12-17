@@ -9,17 +9,40 @@ def is_stringvar(var):
     """Check if a variable is a string variable"""
     return var.endswith("$")
 
-def find_deffns(prog):
-    """Find all the DEF FN functions in the program"""
-    map = {}
-    for event, node in walk(prog):
-        if event != Walk.ENTERING:
-            continue
-        if isinstance(node, DefFn):
-            if node.name in map:
-                raise ValueError(f"Function {node.name} already defined")
-            map[node.name.lower()] = node
-    return map
+class ProgramInfo:
+    """Information about a ZX Spectrum BASIC program needed for running it"""
+    def __init__(self, prog):
+        lines = [line for line in prog.lines if not isinstance(line, CommentLine)]
+        if not lines:
+            raise ValueError("Empty program (no non-meta-comment lines)")
+        self.lines_map = LineMapper(lines)
+        lines = [list(self._flattened_statements(line.statements)) for line in lines]
+        self.lines = lines
+        self._find_info(prog)
+        self.data = ProgramData(prog)
+    
+    @staticmethod
+    def _flattened_statements(statements):
+        """Flatten a line of statements to handle IF statements"""
+        for stmt in statements:
+            match stmt:
+                case If(condition=cond, statements=stmts, parent=parent, after=after):
+                    yield If(condition=cond, statements=[], parent=parent, after=None)
+                    yield from ProgramInfo._flattened_statements(stmts)
+                case _:
+                    yield stmt
+
+    def _find_info(self, prog):
+        """Find all the DEF FN functions in the program"""
+        map = {}
+        for event, node in walk(prog):
+            if event != Walk.ENTERING:
+                continue
+            if isinstance(node, DefFn):
+                if node.name in map:
+                    raise ValueError(f"Function {node.name} already defined")
+                map[node.name.lower()] = node
+        self.functions = map
 
 class ProgramData:
     """Data for a ZX Spectrum BASIC program"""
@@ -72,11 +95,10 @@ class ProgramData:
 
 class Environment:
     """Environment for running ZX Spectrum BASIC programs"""
-    def __init__(self, lines_map, functions={}, data=None):
+    def __init__(self, prog_info, data=None):
         self.vars = {}
         self.array_vars = {}
-        self.functions = functions
-        self.lines_map = lines_map
+        self.prog_info = prog_info
         self.gosub_stack = []
         self.data = data
 
@@ -106,7 +128,7 @@ class Environment:
             raise ValueError(f"Function name {name} is not a string")
         try:
             name = name.lower()
-            return self.functions[name]
+            return self.prog_info.functions[name]
         except KeyError as e:
             raise ValueError(f"Function {name} not defined") from e
 
@@ -204,26 +226,14 @@ class LineMapper:
             return None
         return self.lines[self.line_numbers[i]]
 
-def flattened_statements(statements):
-    """Flatten a line of statements to handle IF statements"""
-    for stmt in statements:
-        match stmt:
-            case If(condition=cond, statements=stmts, parent=parent, after=after):
-                yield If(condition=cond, statements=[], parent=parent, after=None)
-                yield from flattened_statements(stmts)
-            case _:
-                yield stmt
 
 def run_program(prog : Program, start=0):
     """Run a ZX Spectrum BASIC program"""
     # Set up the environment
-    prog_lines = [line for line in prog.lines if not isinstance(line, CommentLine)]
-    if not prog_lines:
-        raise ValueError("Empty program (no non-meta-comment lines)")
-    lines_map = LineMapper(prog_lines)
-    lines = [list(flattened_statements(line.statements)) for line in prog_lines]
-    functions = find_deffns(prog)
-    env = Environment(lines_map, functions, data=ProgramData(prog))
+    prog_info = ProgramInfo(prog)
+    env = Environment(prog_info, data=ProgramData(prog))
+    lines = prog_info.lines
+    lines_map = prog_info.lines_map
     # Run the program
     line_idx, stmt_idx = (lines_map.get_index(start), 0) if start else (0, 0)
     while line_idx is not None and line_idx < len(lines):
@@ -260,7 +270,7 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
             if len(args) != 1:
                 raise ValueError("GOSUB requires exactly one argument")
             env.gosub_push(line_idx, stmt_idx+1)
-            return (env.lines_map.get_index(run_expr(env, args[0])), 0)
+            return (env.prog_info.lines_map.get_index(run_expr(env, args[0])), 0)
         case BuiltIn(action=action, args=args):
             handler = BUILTIN_MAP.get(action)
             if handler is None:
@@ -397,7 +407,7 @@ def run_goto(env, args):
     """Run a GOTO statement"""
     if len(args) != 1:
         raise ValueError("GOTO requires exactly one argument")
-    return (env.lines_map.get_index(run_expr(env, args[0])), 0)
+    return (env.prog_info.lines_map.get_index(run_expr(env, args[0])), 0)
 
 # Placeholder for now
 def run_print(env, args):
