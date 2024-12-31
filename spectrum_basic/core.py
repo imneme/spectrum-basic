@@ -351,8 +351,8 @@ def calculate_remapping(vars):
         'fn': {'start': 'F', 'one_letter': True},
     }
     def make_remapper(info, taken_names=None, remapping=None):
-        taken_names = taken_names or set()
-        remapping = remapping or {}
+        taken_names = taken_names if taken_names is not None else set()
+        remapping = remapping if remapping is not None else {}
         generator = var_generator(info['start'], info['one_letter'], taken_names)
         def remapper(var):
             lvar = var.lower()
@@ -362,6 +362,7 @@ def calculate_remapping(vars):
             # name isn't already taken
             is_string = var.endswith("$")
             lvar_no_sigil = lvar[:-1] if is_string else lvar
+            lvar_no_sigil = lvar_no_sigil.lower()
             if len(lvar_no_sigil) == 1 and not lvar_no_sigil in taken_names:
                 taken_names.add(lvar_no_sigil)
                 return remapping.setdefault(lvar, var)
@@ -392,9 +393,11 @@ def calculate_remapping(vars):
 
     # Remap the parameters of functions
     remappingFor["fn-params"] = {}
+    numericRemapping = remappingFor["numeric"]
     for fn, fn_info in vars["fn-info"].items():
-        # taken1 still holds all the numeric vairables, which we must avoid
-        remapping, remap = make_remapper({'start': 'X', 'one_letter': True}, taken_names=taken1)
+        free_vars = fn_info["numeric"]
+        fn_taken = set(numericRemapping[v].lower() for v in free_vars)
+        remapping, remap = make_remapper({'start': 'X', 'one_letter': True}, taken_names=fn_taken)
         for param in fn_info["param"]:
            remap(param)
         lfn = fn.lower()
