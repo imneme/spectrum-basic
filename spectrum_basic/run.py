@@ -133,6 +133,7 @@ class Environment:
         output = ZXOutputStream()
         self.tty = output
         self.channels = {0: output, 1: output, 2: output}
+        self.memory = bytearray(64*1024)
 
     def let_var(self, var, value):
         """Set a variable"""
@@ -546,8 +547,8 @@ FBUILTIN_MAP = {
     "LEN":  (1, lambda env, args: len(run_expr(env, args[0]))),
     "CODE": (1, lambda env, args: ord(run_expr(env, args[0])[0])),
     "IN":   (1, lambda env, args: 0), # TODO
-    "VAL":  (1, lambda env, args: 0), # TODO
-    "PEEK": (1, lambda env, args: 0), # TODO
+    "VAL":  (1, lambda env, args: float(run_expr(env, args[0]))), # PARTIAL
+    "PEEK": (1, lambda env, args: env.memory[int(run_expr(env, args[0]))]),
     "CHR$": (1, lambda env, args: chr(run_expr(env, args[0]))),
     "STR$": (1, lambda env, args: format_float(run_expr(env, args[0]))),
     "VAL$": (1, lambda env, args: ""), # TODO
@@ -692,6 +693,7 @@ def run_read(env, args):
         run_let(env, arg, expr)
 
 def run_open(env, args):
+    """Run an OPEN statement"""
     channel_id = int(run_expr(env, args[0]))
     file = run_expr(env, args[1])
     if (channel_id < 0 or channel_id > 15):
@@ -722,12 +724,63 @@ def run_open(env, args):
         raise ValueError(f"Unknown file type {file}")
 
 def run_close(env, args):
+    """Run a CLOSE statement"""
     channel_id = int(run_expr(env, args[0]))
     if channel_id not in env.channels:
         raise ValueError(f"Channel {channel_id} not open")
     if env.channels[channel_id] != env.tty:
         env.channels[channel_id].close()
     del env.channels[channel_id]
+
+def run_clear(env, args):
+    """Run a CLEAR statement, zap all variables and the gosub stack"""
+    env.vars.clear()
+    env.array_vars.clear()
+    env.gosub_stack.clear()
+
+def run_poke(env, args):
+    """Run a POKE statement"""
+    address = int(run_expr(env, args[0]))
+    value = int(run_expr(env, args[1]))
+    if address < 0 or address > 65535:
+        raise ValueError(f"POKE address {address} out of range")
+    if value < 0 or value > 255:
+        raise ValueError(f"POKE value {value} out of range")
+    env.memory[address] = value
+
+def run_load(env, args):
+    """Run a LOAD statement (only load CODE supported)"""
+    if len(args) != 2:
+        raise ValueError("Only LOAD name CODE is supported")
+    filename = run_expr(env, args[0])
+    length = None
+    match args[1]:
+        case BuiltIn(action="CODE", args=[start]):
+            start = int(run_expr(env, start))
+        case BuiltIn(action="CODE", args=[start, length]):
+            start = int(run_expr(env, start))
+            length = int(run_expr(env, length))
+        case BuiltIn(action="CODE", args=[]):
+            raise ValueError("LOAD CODE without start address")
+        case _:
+            raise ValueError("LOAD only supports CODE")
+    with open(filename, "rb") as f:
+        data = f.read(length)
+        env.memory[start:start+len(data)] = data
+
+def run_save(env, args):
+    """Run a SAVE statement (only save CODE supported)"""
+    if len(args) != 2:
+        raise ValueError("Only SAVE name CODE is supported")
+    filename = run_expr(env, args[0])
+    match args[1]:
+        case BuiltIn(action="CODE", args=[start, length]):
+            start = int(run_expr(env, start))
+            length = int(run_expr(env, length))
+        case _:
+            raise ValueError("SAVE only supports CODE")
+    with open(filename, "wb") as f:
+        f.write(env.memory[start:start+length])
 
 # Maps names of builtins to their corresponding functions
 BUILTIN_MAP = {
@@ -738,6 +791,10 @@ BUILTIN_MAP = {
     "INPUT": lambda env, args: run_print(env, args, is_input=True),
     "OPEN #": run_open,
     "CLOSE #": run_close,
+    "CLEAR": run_clear,
+    "POKE": run_poke,
+    "LOAD": run_load,
+    "SAVE": run_save,
     "RESTORE": lambda env, args: env.data.restore(run_expr(env, args[0])),
     "INK":  lambda env, args: run_color(env, "INK", args[0]),
     "PAPER":  lambda env, args: run_color(env, "PAPER", args[0]),
