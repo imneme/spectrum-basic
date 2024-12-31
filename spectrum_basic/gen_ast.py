@@ -153,6 +153,17 @@ def gen_ast_classes(output_file):
               bytescode="[name, b'(', bjoin(subscripts, sep=b','), b')']", no_token=True, superclass="Expression")
     gen_class("Fn", ["name", "args"], format="FN {name}({', '.join(str(arg) for arg in args)})",
               bytescode="[name, b'(', bjoin(args, sep=b','), b')']", superclass="Expression")
+    gen_class("InputExpr", ["expr"], dont_code=["__str__","__bytes__"], xcode="""
+    def needs_parens(self):
+        return not (isinstance(self.expr, String) or isinstance(self.expr, Number))
+    def __str__(self):
+        return f"({self.expr})" if self.needs_parens() else str(self.expr)
+    def __bytes__(self):
+        bexpr = bytes(self.expr)
+        if self.needs_parens():
+            bexpr = b'(' + bexpr + b')'
+        return bexpr
+""")
     gen_class("Slice", ["min", "max"], dont_code=["__str__","__bytes__"], xcode="""
     def __str__(self):
         if self.min is None:

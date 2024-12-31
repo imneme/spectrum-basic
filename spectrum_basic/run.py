@@ -1,4 +1,6 @@
 from .ast import *
+from .tokenizer import *
+from .zxoutput import ZXOutputStream
 import bisect
 import math
 import random
@@ -8,6 +10,12 @@ import random
 def is_stringvar(var):
     """Check if a variable is a string variable"""
     return var.endswith("$")
+
+def force_width(str, width):
+    """Force a string to a certain width"""
+    if len(str) > width:
+        return str[:width]
+    return str.ljust(width)
 
 class ProgramInfo:
     """Information about a ZX Spectrum BASIC program needed for running it"""
@@ -34,6 +42,8 @@ class ProgramInfo:
                 case If(condition=cond, statements=stmts, parent=parent, after=after):
                     yield If(condition=cond, statements=[], parent=parent, after=None)
                     yield from ProgramInfo._flattened_statements(stmts)
+                case JankyStatement(actual=stmt):
+                    continue
                 case _:
                     yield stmt
 
@@ -120,6 +130,9 @@ class Environment:
         self.prog_info = prog_info
         self.gosub_stack = []
         self.data = data
+        output = ZXOutputStream()
+        self.tty = output
+        self.channels = {0: output, 1: output, 2: output}
 
     def let_var(self, var, value):
         """Set a variable"""
@@ -193,15 +206,68 @@ class Environment:
             
     def dim(self, var, *dims):
         """Create an array"""
-        pass # TODO
+        is_string = is_stringvar(var)
+        var = var.lower()
+        if is_string:
+            dims = list(dims)
+            str_len = dims.pop()
+            init_val = " " * str_len
+        else:
+            init_val = 0
+        def nest(i):
+            if i == len(dims):
+                return init_val
+            return [nest(i+1) for _ in range(dims[i])]
+        self.array_vars[var] = {
+            'bounds': dims,
+            'values': nest(0),
+        }
+        if is_string:
+            self.array_vars[var]['str_len'] = str_len
+    
+    def get_array_all(self, var):
+        """Get all the information about an array; array is allowed not to exist"""
+        return self.array_vars.get(var.lower())
 
     def get_array(self, var, *indices):
         """Get an array element"""
-        pass # TODO
-
+        var = var.lower()
+        try:
+            array_dict = self.array_vars[var]
+        except KeyError as e:
+            raise ValueError(f"Array {var} not defined") from e
+        bounds = array_dict['bounds']
+        if len(bounds) != len(indices):
+            raise ValueError(f"Wrong number of indices for array {var}, need {len(bounds)}")
+        for i, (idx, bound) in enumerate(zip(indices, bounds)):
+            if idx < 1 or idx > bound:
+                raise ValueError(f"Index {idx} out of bounds for array {var} at dimension {i}")
+        arrayval = array_dict['values']
+        for idx in indices:
+            arrayval = arrayval[idx-1]
+        return arrayval
+        
     def set_array(self, var, value, *indices):
         """Set an array element"""
-        pass # TODO
+        var = var.lower()
+        try:
+            array_dict = self.array_vars[var]
+        except KeyError as e:
+            raise ValueError(f"Array {var} not defined") from e
+        bounds = array_dict['bounds']
+        if len(bounds) != len(indices):
+            raise ValueError(f"Wrong number of indices for array {var}, need {len(bounds)}")
+        for i, (idx, bound) in enumerate(zip(indices, bounds)):
+            if idx < 1 or idx > bound:
+                raise ValueError(f"Index {idx} out of bounds for array {var} at dimension {i}")
+        arrayval = array_dict['values']
+        indices = list(indices)
+        last_idx = indices.pop()
+        for idx in indices:
+            arrayval = arrayval[idx-1]
+        if is_stringvar(var):
+            value = force_width(value, array_dict['str_len'])
+        arrayval[last_idx-1] = value
 
     def gosub_push(self, line_idx, stmt_idx):
         """Push a GOSUB return address"""
@@ -272,12 +338,53 @@ def run_stmts(env, stmts, line_idx=0, stmt_idx=0):
 
 def run_let(env, vardest, expr):
     """Run a LET statement"""
-    value = run_expr(env, expr)
+    run_let_val(env, vardest, run_expr(env, expr))
+
+
+def run_let_val(env, vardest, value):
+    """Run a LET statement (internal)"""
     match vardest:
         case Variable(name=v):
             env.let_var(v, value)
         case ArrayRef(name=v, subscripts=subs):
-            raise ValueError("Arrays not supported yet")
+            # String variables can have an extra subscript for the character index
+            slice = None
+            subs = list(subs) # Make a copy!
+            if is_stringvar(v):
+                array_info = env.get_array_all(v)
+                bounds = array_info['bounds'] if array_info else []
+                if len(subs) == len(bounds) + 1:
+                    slice = subs.pop()
+                elif len(subs) != len(bounds):
+                    raise ValueError(f"Wrong number of subscripts for array {v}")
+            indices = [run_expr(env, sub) for sub in subs]
+            if slice is None:
+                env.set_array(v, value, *indices)
+                return
+            if indices == []:
+                # It's a plain old string variable, not an array
+                old_value = env.get_var(v)
+            else:
+                # It's an array
+                old_value = env.get_array(v, *indices)
+            if not isinstance(slice, Slice):
+                # Just a regular index to change one character
+                index = run_expr(env, slice)
+                left = index
+                right = index
+            else:
+                left = run_expr(env, slice.min) if slice.min is not None else 1
+                right = run_expr(env, slice.max) if slice.max is not None else len(old_value)
+            if left < 1 or right > len(old_value):
+                raise ValueError(f"String index out of bounds for {v}")
+            # print(f"DEBUG: Setting {v} to {value} at {left} to {right}")
+            value = force_width(value, right - left + 1)
+            value = old_value[:left-1] + value + old_value[right:]
+            if indices == []:
+                env.let_var(v, value)
+            else:
+                env.set_array(v, value, *indices)
+
 
 def run_stmt(env, stmt, line_idx, stmt_idx):
     """Run a single statement"""
@@ -328,6 +435,9 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
             pass # Data is handled by the ProgramData class
         case DefFn():
             pass # Functions are found by find_deffns at the start
+        case Dim(name=name, dims=exprs):
+            dims = [run_expr(env, expr) for expr in exprs]
+            env.dim(name, *dims)
         case _:
             raise ValueError(f"Statement {stmt} is not supported")
 
@@ -359,12 +469,36 @@ def run_expr(env, expr):
         case Number(value=n):
             return n
         case String(value=s):
-            return s
+            bytes = echars_to_bytes(s)
+            # Turn the bytes into a string, don't try this at home, kids
+            # it's moderately evil to store ZX-Spectrum encoded strings 
+            # in python's Unicode strings
+            return ''.join(chr(b) for b in bytes)
         case Variable(name=v):
             return env.get_var(v)
-        case ArrayRef(name=v, subscripts=[sub]):
-            # For now, assume it's a string
-            return run_slice(env, env.get_var(v), sub)
+        case ArrayRef(name=v, subscripts=subs):
+            # # For now, assume it's a string
+            # return run_slice(env, env.get_var(v), sub)
+            if not is_stringvar(v):
+                return env.get_array(v, *[run_expr(env, sub) for sub in subs])
+            slice = None
+            subs = list(subs) # Make a copy!
+            array_info = env.get_array_all(v)
+            bounds = array_info['bounds'] if array_info else []
+            if len(subs) == len(bounds) + 1:
+                slice = subs.pop()
+            elif len(subs) != len(bounds):
+                raise ValueError(f"Wrong number of subscripts for array {v}")
+            if subs == []:
+                # It's a plain old string variable, not an array
+                value = env.get_var(v)
+            else:
+                # It's an array
+                value = env.get_array(v, *[run_expr(env, sub) for sub in subs])
+            if slice:
+                return run_slice(env, value, slice)
+            return value
+
         case BuiltIn(action=action, args=args):
             (num_args, handler) = FBUILTIN_MAP.get(action)
             if num_args is not None and len(args) != num_args:
@@ -415,7 +549,7 @@ FBUILTIN_MAP = {
     "VAL":  (1, lambda env, args: 0), # TODO
     "PEEK": (1, lambda env, args: 0), # TODO
     "CHR$": (1, lambda env, args: chr(run_expr(env, args[0]))),
-    "STR$": (1, lambda env, args: str(run_expr(env, args[0]))),
+    "STR$": (1, lambda env, args: format_float(run_expr(env, args[0]))),
     "VAL$": (1, lambda env, args: ""), # TODO
 }
 
@@ -441,62 +575,180 @@ def run_goto(env, args):
         raise ValueError("GOTO requires exactly one argument")
     return (env.prog_info.lines_map.get_index(run_expr(env, args[0])), 0)
 
-# Placeholder for now
-def run_print(env, args):
+
+PRINT_CODES = {
+    "INK": (16, 9),
+    "PAPER": (17, 9),
+    "FLASH": (18, 1),
+    "BRIGHT": (19, 1),
+    "INVERSE": (20, 1),
+    "OVER": (21, 1),
+}
+
+def run_color(env, cmd, arg, stream=None):
+    """Run a colour statement"""
+    stream = stream or env.tty
+    value = int(run_expr(env, arg))
+    code, max = PRINT_CODES[cmd]
+    if value < 0 or value > max:
+        raise ValueError(f"{cmd} {value} is out of range")
+    stream.write(chr(code) + chr(value))
+
+def format_float(value):
+    """Format a floating point number"""
+    return f"{value:.7f}".rstrip("0").rstrip(".")
+
+def run_print(env, args, curchannel=2, is_input=False):
     """Run a PRINT statement"""
     sep = None
+    def put(*args):
+        try:
+            stream = env.channels[curchannel]
+        except IndexError as e:
+            raise ValueError(f"Channel {curchannel} not open") from e
+        for arg in args:
+            stream.write(str(arg))
+    
+    env.tty.push_state()
+
     for printitem in args:
         printaction = printitem.value
         sep = printitem.sep
+        if printaction is not None and is_input:
+            match printaction:
+                case BuiltIn(action="LINE", args=[var]):
+                    do_input(env, var, curchannel)
+                    continue
+                case Variable(name=v):
+                    do_input(env, printaction, curchannel)
+                    continue
+                case ArrayRef(name=v, subscripts=subs):
+                    do_input(env, printaction, curchannel)
+                    continue
+                case InputExpr(expr=e):
+                    printaction = e
         if printaction is not None:
             match printaction:
                 case BuiltIn(action="AT", args=[x, y]):
-                    # Send an ANSI escape sequence to move the cursor
-                    print(f"\x1b[{1+run_expr(env, x)};{1+run_expr(env, y)}H", end="")
+                    # Send an Spectrum escape sequence to move the cursor
+                    put(chr(22), chr(run_expr(env, x)), chr(run_expr(env, y)))
+                case BuiltIn(action="TAB", args=[x]):
+                    # Send an Spectrum escape sequence to move the cursor
+                    put(chr(23), chr(run_expr(env, x)))
+                case BuiltIn(action=("INK"|"PAPER"|"FLASH"|"BRIGHT"|"INVERSE"|"OVER") as action, args=[e]):
+                    run_color(env, action, e, stream=env.channels[curchannel])
+                case ChanSpec(chan=c):
+                    curchannel = run_expr(env, c)
                 case _:
                     if is_expression(printaction):
                         value = run_expr(env, printaction)
                         # Floating point numbers are printed with 7 decimal places
                         if isinstance(value, float):
-                            print(f"{value:.7f}", end="")
+                            put(format_float(value))
                         else:
-                            print(value, end="")
+                            put(value)
                     else:
                         raise ValueError(f"Unsupported print item {printaction}")
         match sep:
             case None:
                 pass
             case ",":
-                print("\t", end="")
+                put(chr(6))
             case ";":
                 pass
             case "'":
-                print()
+                put(chr(13))
             case _:
                 raise ValueError(f"Unsupported print separator {sep}")
     # After printint everything, what was the the last sep used?
-    if sep is None:
-        print()
+    if sep is None and not is_input:
+        put(chr(13))
+
+    env.tty.pop_state()
+
+def do_input(env, target, curchannel):
+    try:
+        stream = env.channels[curchannel]
+    except IndexError as e:
+        raise ValueError(f"Channel {curchannel} not open") from e
+    match target:
+        case Variable(name=v):
+            is_string = is_stringvar(v)
+        case ArrayRef(name=v):
+            is_string = is_stringvar(v)
+    if stream == env.tty:
+        line = input("")
+    else:
+        line = stream.readline().strip('\n')
+    if not is_string:
+        line = float(line)
+    run_let_val(env, target, line)
+            
 
 def run_read(env, args):
     """Run a READ statement"""
     for arg in args:
         expr = env.data.next()
-        value = run_expr(env, expr)
-        match arg:
-            case Variable(name=v):
-                env.let_var(v, value)
-            case _:
-                raise ValueError(f"READ requires variable, got {arg}")
+        run_let(env, arg, expr)
+
+def run_open(env, args):
+    channel_id = int(run_expr(env, args[0]))
+    file = run_expr(env, args[1])
+    if (channel_id < 0 or channel_id > 15):
+        raise ValueError(f"Channel id {channel_id} is out of range")
+    if channel_id in env.channels:
+        # Automagically close the channel
+        if env.channels[channel_id] != env.tty:
+            env.channels[channel_id].close()
+        del env.channels[channel_id]
+    if file == "K" or file == "S":
+        env.channels[channel_id] = env.tty
+    elif file == "P":
+        raise ValueError("Printer channel not supported")
+    elif file.startswith("O>") or file.startswith("U>") or file.startswith("I>"):
+        if file.startswith("O>"):
+            mode = "w"
+        elif file.startswith("U>"):
+            mode = "r+"
+        else:
+            mode = "r"
+        filename = file[2:]
+        env.channels[channel_id] = open(filename, mode)
+    elif file.startswith("M>"):
+        raise ValueError("Memory channel not supported")
+    elif len(file) > 2 and file[1] != ">":
+        env.channels[channel_id] = open(file, "r")
+    else:
+        raise ValueError(f"Unknown file type {file}")
+
+def run_close(env, args):
+    channel_id = int(run_expr(env, args[0]))
+    if channel_id not in env.channels:
+        raise ValueError(f"Channel {channel_id} not open")
+    if env.channels[channel_id] != env.tty:
+        env.channels[channel_id].close()
+    del env.channels[channel_id]
 
 # Maps names of builtins to their corresponding functions
 BUILTIN_MAP = {
     "GOTO": run_goto,
     "RETURN": lambda env, args: env.gosub_pop(),
     "STOP": lambda env, args: (float('inf'), 0),
-    "PRINT": run_print,
-    # CLS send ansi to clear screen and home cursor
-    "CLS": lambda env, args: print("\x1b[2J\x1b[H", end=""),
+    "PRINT": run_print,    
+    "INPUT": lambda env, args: run_print(env, args, is_input=True),
+    "OPEN #": run_open,
+    "CLOSE #": run_close,
+    "RESTORE": lambda env, args: env.data.restore(run_expr(env, args[0])),
+    "INK":  lambda env, args: run_color(env, "INK", args[0]),
+    "PAPER":  lambda env, args: run_color(env, "PAPER", args[0]),
+    "FLASH":  lambda env, args: run_color(env, "FLASH", args[0]),
+    "BRIGHT":  lambda env, args: run_color(env, "BRIGHT", args[0]),
+    "INVERSE":  lambda env, args: run_color(env, "INVERSE", args[0]),
+    "OVER":  lambda env, args: run_color(env, "OVER", args[0]),
+    "BORDER": lambda env, args: None, # TODO
+    "PLOT": lambda env, args: None, # TODO
+    "DRAW": lambda env, args: None, # TODO
+    "CLS": lambda env, args: env.tty.cls(),
 }
 
 if __name__ == "__main__":

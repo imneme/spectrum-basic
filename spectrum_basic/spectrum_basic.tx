@@ -260,7 +260,8 @@ PrintSeparatedItem: item=PrintItem? sep=PrintSeparator;
 Print: /PRINT\b/ items*=PrintSeparatedItem (final=PrintItem)?;
 Lprint: /LPRINT\b/ items*=PrintItem[','];
 
-InputItem: ColourParam | At | Tab | ChanSpec | InputLine | VarDest | Expression;
+InputItem: ColourParam | At | Tab | ChanSpec | InputLine | VarDest | InputExpr;
+InputExpr: expr=Expression;
 PrintSeparator: ',' | ';' | '\'';
 InputSeparatedItem: item=InputItem? sep=PrintSeparator;
 Input: /INPUT\b/ items*=InputSeparatedItem (final=InputItem)?;
