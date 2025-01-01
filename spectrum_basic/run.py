@@ -795,7 +795,7 @@ BUILTIN_MAP = {
     "POKE": run_poke,
     "LOAD": run_load,
     "SAVE": run_save,
-    "RESTORE": lambda env, args: env.data.restore(run_expr(env, args[0])),
+    "RESTORE": lambda env, args: env.data.restore(run_expr(env, args[0]) if args else 0),
     "INK":  lambda env, args: run_color(env, "INK", args[0]),
     "PAPER":  lambda env, args: run_color(env, "PAPER", args[0]),
     "FLASH":  lambda env, args: run_color(env, "FLASH", args[0]),
