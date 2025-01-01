@@ -1,6 +1,7 @@
 from .ast import *
 from .tokenizer import *
 from .zxoutput import ZXOutputStream
+from .zxinput import pause, inkey
 import bisect
 import math
 import random
@@ -551,6 +552,7 @@ FBUILTIN_MAP = {
     "PEEK": (1, lambda env, args: env.memory[int(run_expr(env, args[0]))]),
     "CHR$": (1, lambda env, args: chr(run_expr(env, args[0]))),
     "STR$": (1, lambda env, args: format_float(run_expr(env, args[0]))),
+    "INKEY$": (0, lambda env, args: inkey()),
     "VAL$": (1, lambda env, args: ""), # TODO
 }
 
@@ -782,6 +784,14 @@ def run_save(env, args):
     with open(filename, "wb") as f:
         f.write(env.memory[start:start+length])
 
+def run_pause(env, args):
+    """Run a PAUSE statement"""
+    delay = run_expr(env, args[0])
+    if delay < 0:
+        raise ValueError(f"Negative delay {delay} in PAUSE")
+    delay = None if delay == 0 else delay
+    pause(delay)
+
 # Maps names of builtins to their corresponding functions
 BUILTIN_MAP = {
     "GOTO": run_goto,
@@ -795,6 +805,7 @@ BUILTIN_MAP = {
     "POKE": run_poke,
     "LOAD": run_load,
     "SAVE": run_save,
+    "PAUSE": run_pause,
     "RESTORE": lambda env, args: env.data.restore(run_expr(env, args[0]) if args else 0),
     "INK":  lambda env, args: run_color(env, "INK", args[0]),
     "PAPER":  lambda env, args: run_color(env, "PAPER", args[0]),
