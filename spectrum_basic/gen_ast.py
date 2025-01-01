@@ -94,7 +94,7 @@ def gen_ast_classes(output_file):
                 bytescode="[bjoin(lines)]", no_parent=True, no_token=True)
 
     gen_class("SourceLine", ["line_number", "label", "statements", "after"], 
-              bytescode="[line_to_bytes(line_number, bjoin(statements, b':')), bjoin(after)]",
+              bytescode="[line_to_bytes(line_number, bjoin([bjoin(statements, b':'),after]))]",
               no_token=True, dont_code=["__str__"], xcode="""
     def __str__(self):
         str_statements = ": ".join(str(stmt) for stmt in self.statements)
