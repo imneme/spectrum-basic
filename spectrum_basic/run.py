@@ -6,6 +6,55 @@ import bisect
 import math
 import random
 
+# Exception class
+
+class ZXBasicError(Exception):
+    """ZX Spectrum BASIC error"""
+    def __init__(self, errcode, message, line=None, stmt=None, action=None):
+        self.errcode = errcode
+        # These are usually added later, not in the constructor
+        self.line = line      # Line number
+        self.stmt = stmt      # Statement number within line
+        self.action = action  # Actual code being executed
+        super().__init__(message)
+
+    MESSAGE_MAP = {
+        '0': "OK",
+        '1': "NEXT without FOR",
+        '2': "Variable not found",
+        '3': "Subscript wrong",
+        '4': "Out of memory",
+        '5': "Out of screen",
+        '6': "Number too big",
+        '7': "RETURN without GO SUB",
+        '8': "End of file",
+        '9': "STOP statement",
+        'A': "Invalid argument",
+        'B': "Integer out of range",
+        'C': "Nonsense in BASIC",
+        'D': "BREAK - CONT repeats",
+        'E': "Out of DATA",
+        'F': "Invalid file name",
+        'G': "No room for line",
+        'H': "STOP in INPUT",
+        'I': "FOR without NEXT",
+        'J': "Invalid I/O device",
+        'K': "Invalid colour",
+        'L': "BREAK into program",
+        'M': "RAMTOP no good",
+        'N': "Statement lost",
+        'O': "Invalid stream",
+        'P': "FN without DEF",
+        'Q': "Parameter error",
+        'R': "Tape loading error",
+    }
+
+    def __str__(self):
+        if self.line is None:
+            return f"{self.errcode} {self.MESSAGE_MAP.get(self.errcode, 'Unknown error')}\n\t{super().__str__()}"
+        return f"{self.errcode} {self.MESSAGE_MAP.get(self.errcode, 'Unknown error')}, {self.line}:{self.stmt}\n\t{super().__str__()}\n\trunning {self.action}"
+
+
 # Run ZX Spectrum BASIC code
 
 def is_stringvar(var):
@@ -23,7 +72,7 @@ class ProgramInfo:
     def __init__(self, prog):
         lines = [line for line in prog.lines if not isinstance(line, CommentLine)]
         if not lines:
-            raise ValueError("Empty program (no non-meta-comment lines)")
+            raise ZXBasicError('N', "Empty program (no non-meta-comment lines)")
         self.lines_map = LineMapper(lines)
         lines = [list(self._flattened_statements(line.statements)) for line in lines]
         posForNode = {
@@ -59,7 +108,7 @@ class ProgramInfo:
                     match node:
                         case DefFn(name=name, params=params, expr=expr):
                             if name in fn_map:
-                                raise ValueError(f"Function {name} already defined")
+                                raise ZXBasicError('C', f"Function {name} already defined")
                             fn_map[name.lower()] = node
                         case For(var=Variable(name=v), start=start, end=end, step=step):
                             active_for[v] = node
@@ -118,7 +167,7 @@ class ProgramData:
     def next(self):
         """Get the next data item"""
         if self.index >= len(self.data):
-            raise ValueError("Out of DATA")
+            raise ZXBasicError('E', "Out of DATA")
         value = self.data[self.index]
         self.index += 1
         return value
@@ -139,14 +188,14 @@ class Environment:
     def let_var(self, var, value):
         """Set a variable"""
         if not isinstance(var, str):
-            raise ValueError(f"Variable name {var} is not a string")
+            raise ZXBasicError('C', f"Variable name {var} is not a string")
         var = var.lower()
         self.vars.setdefault(var, {})['value'] = value
 
     def for_loop(self, var, line_idx, stmt_idx, start, end, step):
         """Start a FOR loop"""
         if not isinstance(var, str):
-            raise ValueError(f"Variable name {var} is not a string")
+            raise ZXBasicError('C', f"Variable name {var} is not a string")
         var = var.lower()
         self.vars[var] = {
             'value': start,
@@ -159,27 +208,27 @@ class Environment:
     def get_fn(self, name):
         """Get a function"""
         if not isinstance(name, str):
-            raise ValueError(f"Function name {name} is not a string")
+            raise ZXBasicError('C', f"Function name {name} is not a string")
         try:
             name = name.lower()
             return self.prog_info.functions[name]
         except KeyError as e:
-            raise ValueError(f"Function {name} not defined") from e
+            raise ZXBasicError('P', f"Function {name} not defined") from e
 
     def get_var(self, var):
         """Get a variable"""
         if not isinstance(var, str):
-            raise ValueError(f"Variable name {var} is not a string")
+            raise ZXBasicError('C', f"Variable name {var} is not a string")
         try:
             var = var.lower()
             return self.vars[var]['value']
         except KeyError as e:
-            raise ValueError(f"Variable {var} not defined in {self.vars}") from e
+            raise ZXBasicError('2', f"Variable {var} not defined") from e
     
     def save_var(self, var):
         """Save a variable (on an internal per-variable stack)"""
         if not isinstance(var, str):
-            raise ValueError(f"Variable name {var} is not a string")
+            raise ZXBasicError('C', f"Variable name {var} is not a string")
         var = var.lower()
         dict = self.vars.get(var)
         self.vars[var] = {"stashed": dict}
@@ -187,7 +236,7 @@ class Environment:
     def restore_var(self, var):
         """Restore a variable (from an internal per-variable stack)"""
         if not isinstance(var, str):
-            raise ValueError(f"Variable name {var} is not a string")
+            raise ZXBasicError('C', f"Variable name {var} is not a string")
         try:
             var = var.lower()
             dict = self.vars[var].pop("stashed")
@@ -196,7 +245,7 @@ class Environment:
             else:
                 self.vars[var] = dict
         except KeyError as e:
-            raise ValueError(f"No stashed value for variable {var}") from e
+            raise ZXBasicError('2', f"Variable {var} not defined (no stashed value)") from e
         
     def get_var_all(self, var):
         """Get all the information about a variable"""
@@ -204,7 +253,7 @@ class Environment:
             var = var.lower()
             return self.vars[var]
         except KeyError as e:
-            raise ValueError(f"Variable {var} not defined") from e
+            raise ZXBasicError('2', f"Variable {var} not defined") from e
             
     def dim(self, var, *dims):
         """Create an array"""
@@ -237,13 +286,13 @@ class Environment:
         try:
             array_dict = self.array_vars[var]
         except KeyError as e:
-            raise ValueError(f"Array {var} not defined") from e
+            raise ZXBasicError('2', f"Array {var} not defined") from e
         bounds = array_dict['bounds']
         if len(bounds) != len(indices):
-            raise ValueError(f"Wrong number of indices for array {var}, need {len(bounds)}")
+            raise ZXBasicError('3', f"Wrong number of indices for array {var}, need {len(bounds)}")
         for i, (idx, bound) in enumerate(zip(indices, bounds)):
             if idx < 1 or idx > bound:
-                raise ValueError(f"Index {idx} out of bounds for array {var} at dimension {i}")
+                raise ZXBasicError('3', f"Index {idx} out of bounds for array {var} at dimension {i}")
         arrayval = array_dict['values']
         for idx in indices:
             arrayval = arrayval[idx-1]
@@ -255,13 +304,13 @@ class Environment:
         try:
             array_dict = self.array_vars[var]
         except KeyError as e:
-            raise ValueError(f"Array {var} not defined") from e
+            raise ZXBasicError('2', f"Array {var} not defined") from e
         bounds = array_dict['bounds']
         if len(bounds) != len(indices):
-            raise ValueError(f"Wrong number of indices for array {var}, need {len(bounds)}")
+            raise ZXBasicError('3', f"Wrong number of indices for array {var}, need {len(bounds)}")
         for i, (idx, bound) in enumerate(zip(indices, bounds)):
             if idx < 1 or idx > bound:
-                raise ValueError(f"Index {idx} out of bounds for array {var} at dimension {i}")
+                raise ZXBasicError('3', f"Index {idx} out of bounds for array {var} at dimension {i}")
         arrayval = array_dict['values']
         indices = list(indices)
         last_idx = indices.pop()
@@ -280,16 +329,25 @@ class Environment:
         try:
             return self.gosub_stack.pop()
         except IndexError as e:
-            raise ValueError("RETURN without GOSUB") from e
+            raise ZXBasicError('7', "Spurious RETURN") from e
 
 class LineMapper:
-    """Map line numbers lists of statements"""
+    """Map line numbers to line indices"""
     def __init__(self, lines):
-        self.lines = {}
+        self.lines = {}                   # Maps line numbers to line indices
+        self.rlines = [None] * len(lines) # Maps line indices to line numbers
+        last_lineno = 0
+        unnumbered = 0
         for i, line in enumerate(lines):
             # Only include lines that actually have a line_number
             if line.line_number:
-                self.lines[line.line_number] = i
+                last_lineno = line.line_number
+                self.lines[last_lineno] = i
+                self.rlines[i] = last_lineno
+                unnumbered = 0
+            else:
+                unnumbered += 1
+                self.rlines[i] = f"{last_lineno}+{unnumbered}"
         self.line_numbers = sorted(self.lines.keys())
 
     def nearest_line(self, line_number):
@@ -333,7 +391,16 @@ def run_stmts(env, stmts, line_idx=0, stmt_idx=0):
     """Run a list of statements"""
     for i in range(stmt_idx, len(stmts)):
         stmt = stmts[i]
-        jump = run_stmt(env, stmt, line_idx, i)
+        try:
+            jump = run_stmt(env, stmt, line_idx, i)
+        except ZXBasicError as e:
+            e.line = env.prog_info.lines_map.rlines[line_idx]
+            e.stmt = i+1
+            e.action = stmt
+            raise
+        except Exception as e:
+            line = env.prog_info.lines_map.rlines[line_idx]
+            raise ZXBasicError('C', f"Internal error: {e}", line=line, stmt=i+1, action=stmt) from e
         if jump is not None:
             return jump
     return None
@@ -358,7 +425,7 @@ def run_let_val(env, vardest, value):
                 if len(subs) == len(bounds) + 1:
                     slice = subs.pop()
                 elif len(subs) != len(bounds):
-                    raise ValueError(f"Wrong number of subscripts for array {v}")
+                    raise ZXBasicError('3', f"Wrong number of subscripts for array {v}")
             indices = [run_expr(env, sub) for sub in subs]
             if slice is None:
                 env.set_array(v, value, *indices)
@@ -378,8 +445,7 @@ def run_let_val(env, vardest, value):
                 left = run_expr(env, slice.min) if slice.min is not None else 1
                 right = run_expr(env, slice.max) if slice.max is not None else len(old_value)
             if left < 1 or right > len(old_value):
-                raise ValueError(f"String index out of bounds for {v}")
-            # print(f"DEBUG: Setting {v} to {value} at {left} to {right}")
+                raise ZXBasicError('3', f"String index out of bounds for {v}")
             value = force_width(value, right - left + 1)
             value = old_value[:left-1] + value + old_value[right:]
             if indices == []:
@@ -396,13 +462,13 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
         # Special case for GOSUB as it needs to push the return address
         case BuiltIn(action="GOSUB", args=args):
             if len(args) != 1:
-                raise ValueError("GOSUB requires exactly one argument")
+                raise ZXBasicError('A', "GOSUB requires exactly one argument")
             env.gosub_push(line_idx, stmt_idx+1)
             return (env.prog_info.lines_map.get_index(run_expr(env, args[0])), 0)
         case BuiltIn(action=action, args=args):
             handler = BUILTIN_MAP.get(action)
             if handler is None:
-                raise ValueError(f"The {action} command is not supported")
+                raise ZXBasicError('N', f"The {action} command is not supported")
             return handler(env, args)
         case For(var=Variable(name=v), start=start, end=end, step=step):
             start = run_expr(env, start)
@@ -412,7 +478,7 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
             if (end < start and step >= 0) or (end > start and step < 0):
                 dest = env.prog_info.nearest_next.get(id(stmt))
                 if dest is None:
-                    raise ValueError(f"FOR without NEXT for {v}")
+                    raise ZXBasicError('I', f"FOR without NEXT for {v}")
                 return dest
         case Next(var=Variable(name=v)):
             var_info = env.get_var_all(v)
@@ -441,7 +507,7 @@ def run_stmt(env, stmt, line_idx, stmt_idx):
             dims = [run_expr(env, expr) for expr in exprs]
             env.dim(name, *dims)
         case _:
-            raise ValueError(f"Statement {stmt} is not supported")
+            raise ZXBasicError('N', f"Statement {stmt} is not supported")
 
 BINOP_MAP = {
     '+': lambda a, b: a + b,
@@ -490,7 +556,7 @@ def run_expr(env, expr):
             if len(subs) == len(bounds) + 1:
                 slice = subs.pop()
             elif len(subs) != len(bounds):
-                raise ValueError(f"Wrong number of subscripts for array {v}")
+                raise ZXBasicError('3', f"Wrong number of subscripts for array {v}")
             if subs == []:
                 # It's a plain old string variable, not an array
                 value = env.get_var(v)
@@ -504,9 +570,9 @@ def run_expr(env, expr):
         case BuiltIn(action=action, args=args):
             (num_args, handler) = FBUILTIN_MAP.get(action, (None, None))
             if num_args is not None and len(args) != num_args:
-                raise ValueError(f"{action} requires {num_args} arguments")
+                raise ZXBasicError('A', f"{action} requires {num_args} arguments")
             if handler is None:
-                raise ValueError(f"The {action} function is not supported")
+                raise ZXBasicError('N', f"The {action} function is not supported")
             return handler(env, args)
         case Fn(name=name, args=args):
             return run_fn(env, name, args)
@@ -518,7 +584,7 @@ def run_expr(env, expr):
             value = run_expr(env, expr)
             return run_slice(env, value, index)
         case _:
-            raise ValueError(f"Expression {expr} is not supported")
+            raise ZXBasicError('N', f"Expression {expr} is not supported")
 
 
 def run_slice(env, value, index):
@@ -562,7 +628,7 @@ def run_fn(env, name, args):
     params = fn.params
     expr = fn.expr
     if len(params) != len(args):
-        raise ValueError(f"Function {name} expects {len(params)} arguments")
+        raise ZXBasicError('Q', f"Function {name} expects {len(params)} arguments")
     for param, arg in zip(params, args):
         binding = run_expr(env, arg)
         env.save_var(param)
@@ -575,7 +641,7 @@ def run_fn(env, name, args):
 def run_goto(env, args):
     """Run a GOTO statement"""
     if len(args) != 1:
-        raise ValueError("GOTO requires exactly one argument")
+        raise ZXBasicError('A', "GOTO requires exactly one argument")
     return (env.prog_info.lines_map.get_index(run_expr(env, args[0])), 0)
 
 
@@ -594,7 +660,7 @@ def run_color(env, cmd, arg, stream=None):
     value = int(run_expr(env, arg))
     code, max = PRINT_CODES[cmd]
     if value < 0 or value > max:
-        raise ValueError(f"{cmd} {value} is out of range")
+        raise ZXBasicError('K', f"{cmd} {value} is out of range")
     stream.write(chr(code) + chr(value))
 
 def format_float(value):
@@ -608,7 +674,7 @@ def run_print(env, args, curchannel=2, is_input=False):
         try:
             stream = env.channels[curchannel]
         except IndexError as e:
-            raise ValueError(f"Channel {curchannel} not open") from e
+            raise ZXBasicError('J', f"Channel {curchannel} not open") from e
         for arg in args:
             stream.write(str(arg))
     
@@ -651,7 +717,7 @@ def run_print(env, args, curchannel=2, is_input=False):
                         else:
                             put(value)
                     else:
-                        raise ValueError(f"Unsupported print item {printaction}")
+                        raise ZXBasicError('N', f"Unsupported print item {printaction}")
         match sep:
             case None:
                 pass
@@ -662,7 +728,7 @@ def run_print(env, args, curchannel=2, is_input=False):
             case "'":
                 put(chr(13))
             case _:
-                raise ValueError(f"Unsupported print separator {sep}")
+                raise ZXBasicError('N', f"Unsupported print separator {sep}")
     # After printint everything, what was the the last sep used?
     if sep is None and not is_input:
         put(chr(13))
@@ -673,7 +739,7 @@ def do_input(env, target, curchannel):
     try:
         stream = env.channels[curchannel]
     except IndexError as e:
-        raise ValueError(f"Channel {curchannel} not open") from e
+        raise ZXBasicError('J', f"Channel {curchannel} not open") from e
     match target:
         case Variable(name=v):
             is_string = is_stringvar(v)
@@ -699,7 +765,7 @@ def run_open(env, args):
     channel_id = int(run_expr(env, args[0]))
     file = run_expr(env, args[1])
     if (channel_id < 0 or channel_id > 15):
-        raise ValueError(f"Channel id {channel_id} is out of range")
+        raise ZXBasicError('B', f"Channel id {channel_id} is out of range")
     if channel_id in env.channels:
         # Automagically close the channel
         if env.channels[channel_id] != env.tty:
@@ -708,7 +774,7 @@ def run_open(env, args):
     if file == "K" or file == "S":
         env.channels[channel_id] = env.tty
     elif file == "P":
-        raise ValueError("Printer channel not supported")
+        raise ZXBasicError('O', "Printer channel not supported")
     elif file.startswith("O>") or file.startswith("U>") or file.startswith("I>"):
         if file.startswith("O>"):
             mode = "w"
@@ -719,17 +785,17 @@ def run_open(env, args):
         filename = file[2:]
         env.channels[channel_id] = open(filename, mode)
     elif file.startswith("M>"):
-        raise ValueError("Memory channel not supported")
+        raise ZXBasicError('O', "Memory channel not supported")
     elif len(file) > 2 and file[1] != ">":
         env.channels[channel_id] = open(file, "r")
     else:
-        raise ValueError(f"Unknown file type {file}")
+        raise ZXBasicError('O', f"Unknown file type {file}")
 
 def run_close(env, args):
     """Run a CLOSE statement"""
     channel_id = int(run_expr(env, args[0]))
     if channel_id not in env.channels:
-        raise ValueError(f"Channel {channel_id} not open")
+        raise ZXBasicError('J', f"Channel {channel_id} not open")
     if env.channels[channel_id] != env.tty:
         env.channels[channel_id].close()
     del env.channels[channel_id]
@@ -745,15 +811,15 @@ def run_poke(env, args):
     address = int(run_expr(env, args[0]))
     value = int(run_expr(env, args[1]))
     if address < 0 or address > 65535:
-        raise ValueError(f"POKE address {address} out of range")
+        raise ZXBasicError('B', f"POKE address {address} out of range")
     if value < 0 or value > 255:
-        raise ValueError(f"POKE value {value} out of range")
+        raise ZXBasicError('B', f"POKE value {value} out of range")
     env.memory[address] = value
 
 def run_load(env, args):
     """Run a LOAD statement (only load CODE supported)"""
     if len(args) != 2:
-        raise ValueError("Only LOAD name CODE is supported")
+        raise ZXBasicError('N', "Only LOAD name CODE is supported")
     filename = run_expr(env, args[0])
     length = None
     match args[1]:
@@ -763,9 +829,9 @@ def run_load(env, args):
             start = int(run_expr(env, start))
             length = int(run_expr(env, length))
         case BuiltIn(action="CODE", args=[]):
-            raise ValueError("LOAD CODE without start address")
+            raise ZXBasicError('N', "LOAD CODE without start address")
         case _:
-            raise ValueError("LOAD only supports CODE")
+            raise ZXBasicError('N', "LOAD only supports CODE")
     with open(filename, "rb") as f:
         data = f.read(length)
         env.memory[start:start+len(data)] = data
@@ -773,14 +839,14 @@ def run_load(env, args):
 def run_save(env, args):
     """Run a SAVE statement (only save CODE supported)"""
     if len(args) != 2:
-        raise ValueError("Only SAVE name CODE is supported")
+        raise ZXBasicError('N', "Only SAVE name CODE is supported")
     filename = run_expr(env, args[0])
     match args[1]:
         case BuiltIn(action="CODE", args=[start, length]):
             start = int(run_expr(env, start))
             length = int(run_expr(env, length))
         case _:
-            raise ValueError("SAVE only supports CODE")
+            raise ZXBasicError('N', "SAVE only supports CODE")
     with open(filename, "wb") as f:
         f.write(env.memory[start:start+length])
 
@@ -788,7 +854,7 @@ def run_pause(env, args):
     """Run a PAUSE statement"""
     delay = run_expr(env, args[0])
     if delay < 0:
-        raise ValueError(f"Negative delay {delay} in PAUSE")
+        raise ZXBasicError('B', f"Negative delay {delay} in PAUSE")
     delay = None if delay == 0 else delay
     pause(delay)
 

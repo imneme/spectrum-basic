@@ -651,7 +651,7 @@ def main():
     import argparse
     import sys
     import json
-    from .run import run_program
+    from .run import run_program, ZXBasicError
 
     parser = argparse.ArgumentParser(description="Parse a ZX BASIC program")
     # parser.add_argument("filename", help="Filename of BASIC program to parse")
@@ -754,6 +754,9 @@ def main():
         print("Interrupted", file=sys.stderr)
         sys.exit(1)
     except BrokenPipeError:
+        sys.exit(1)
+    except ZXBasicError as e:
+        print(f"Spectrum Basic Error: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
