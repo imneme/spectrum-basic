@@ -501,7 +501,7 @@ def run_expr(env, expr):
             return value
 
         case BuiltIn(action=action, args=args):
-            (num_args, handler) = FBUILTIN_MAP.get(action)
+            (num_args, handler) = FBUILTIN_MAP.get(action, (None, None))
             if num_args is not None and len(args) != num_args:
                 raise ValueError(f"{action} requires {num_args} arguments")
             if handler is None:
