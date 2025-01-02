@@ -4,6 +4,7 @@
 import re
 
 TOKENS = [
+    "TIME", "PRIVATE", "IFELSE", "ENDIF", "EXIT", "REF",
     "PEEK$", "REG", "DPOKE", "DPEEK", "MOD", "<<", ">>", "UNTIL",
     "ERROR", "ON", "DEF PROC", "END PROC", "PROC", "LOCAL", "DRIVER",
     "WHILE", "REPEAT", "ELSE", "REMOUNT", "BANK", "TILE", "LAYER",
@@ -22,7 +23,7 @@ TOKENS = [
     "RETURN", "COPY"
 ]
 
-CODE_FOR = {token: i+128+7 for i, token in enumerate(TOKENS)}
+CODE_FOR = {token: i+128+1 for i, token in enumerate(TOKENS)}
 
 BLOCK_ESCAPES = ["  ", " '", "' ", "''", " .", " :", "'.", "':",
                 ". ", ".'", ": ", ":'", "..", ".:", ":.", "::"]
