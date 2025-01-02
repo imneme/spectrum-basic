@@ -546,12 +546,23 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
             if prev_blank:
                 # We're overwriting the previous line, so remove its number
                 program.lines[prev_pos].line_number = None
+            deferred_labels = []
             for i, label, is_blank in gap_lines:
-                if label:
-                    line_map[label] = new_line
                 if not is_blank or (label and not remove_labels):
                     program.lines[i].line_number = new_line
+                    if label:
+                        line_map[label] = new_line
+                    if deferred_labels:
+                        for dlabel in deferred_labels:
+                            line_map[dlabel] = new_line
+                        deferred_labels = []
                     new_line += increment
+                elif label:
+                    deferred_labels.append(label)
+            if deferred_labels:
+                good_line = next_num if next_num < 10000 else new_line
+                for dlabel in deferred_labels:
+                    line_map[dlabel] = good_line
         
         prev_pos, prev_num, prev_blank = next_pos, next_num, next_blank
 
