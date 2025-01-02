@@ -128,6 +128,15 @@ def gen_ast_classes(output_file):
               format="IF {condition} THEN {': '.join(str(stmt) for stmt in statements)}{sjoin(after)}",
               bytescode="[condition, token_to_byte('THEN'), bjoin(statements, sep=b':'), bjoin(after)]",
               superclass="Statement")
+    gen_class("LongIf", ["condition"], keyword="IF", superclass="Statement")
+    gen_class("ElseIf", ["condition"], keyword="ELSE",
+              format="ELSE IF {condition}", bytescode="[token_to_byte('IF'), condition]",
+              superclass="Statement")
+    gen_class("Else", ["statements", "after"],
+              format="ELSE {': '.join(str(stmt) for stmt in statements)}{sjoin(after)}",
+              bytescode="[bjoin(statements, sep=b':'), bjoin(after)]",
+              superclass="Statement")
+    gen_class("EndIf", ["keyword"], format="ENDIF", bytescode="[]", superclass="Statement")
     gen_class("Dim", ["name", "dims"], 
               format="DIM {name}({', '.join(str(d) for d in dims)})",
               bytescode="[name, b'(', bjoin(dims, sep=b','), b')']",

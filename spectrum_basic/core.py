@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, LongIf, Else, ElseIf, EndIf, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
 
 # Object processors
 #
@@ -597,6 +597,181 @@ def number_lines(program, remove_labels=True, default_increment=10, start_line=N
     
     return program
 
+# A general utility function we'll use
+def split_and_insert(lst, func):
+    """
+    Processes each element of 'lst' with 'func'. 
+    
+    If func(elem) returns None, the element is added to the current run.
+    If func(elem) returns a list, the current run (if any) is finalized 
+    and appended to the result, then func(elem) is appended as a separate list.
+    
+    Example:
+        >>> def f(n):
+        ...     return None if n % 2 == 0 else [n // 2, (n // 2) + 1]
+        >>> split_and_insert([2, 4, 6, 7, 21, 42], f)
+        [[2, 4, 6], [3, 4], [10, 11], [42]]
+        
+    :param lst: A list of elements to be processed.
+    :param func: A callable that returns either None or a list.
+    :return: A list of lists (runs and inserted lists).
+    """
+    result = []
+    current_run = []
+    
+    for elem in lst:
+        outcome = func(elem)
+        if outcome is None:
+            # Keep accumulating elements until we hit a list outcome
+            current_run.append(elem)
+        else:
+            # If there's a run in progress, finalize it
+            if current_run:
+                result.append(current_run)
+                current_run = []
+            # Then insert the outcome as its own list
+            if isinstance(outcome, tuple):
+                result.extend(outcome)
+            else:
+                result.append(outcome)
+    
+    # If there's a remaining run, finalize it
+    if current_run:
+        result.append(current_run)
+    
+    return result
+
+def break_lines(program, stmt_matcher):
+    """Break lines at a given statement type"""
+    new_lines = []
+    for line in program.lines:
+        if isinstance(line, CommentLine) or len(line.statements) == 0:
+            new_lines.append(line)
+            continue
+        first_stmt = line.statements[0]
+        splits = split_and_insert(line.statements, stmt_matcher)
+        line.statements = splits[0]
+        new_lines.append(line)
+        if len(splits) == 1:
+            continue
+        for stmts in splits[1:]:
+            new_line = SourceLine(line.parent, None, None, stmts, [])
+            if stmts[0] == first_stmt:
+                new_line.line_number = line.line_number
+                new_line.label = line.label
+                line.line_number = None
+                line.label = None
+            new_lines.append(new_line)
+        new_line.after = line.after
+        line.after = []
+    program.lines = new_lines
+
+class PreElseStmt:
+    def walk(self):
+        yield (Walk.VISITING, self)
+
+class PreElseIfStmt:
+    def walk(self):
+        yield (Walk.VISITING, self)
+
+def break_control_lines(program):
+    """Break lines at multi-line control statements"""
+    def breaker(stmt):
+        match stmt:
+            case Else():
+                stmts = stmt.statements
+                stmt.statements = []
+                bstmts = split_and_insert(stmts, breaker)
+                if len(bstmts) == 1:
+                    return ([PreElseStmt()], [stmt] + bstmts[0])
+                else:
+                    return ([PreElseStmt()], [stmt], *bstmts)
+            case ElseIf():
+                return ([PreElseIfStmt()], [stmt])
+            case LongIf() | EndIf():
+                return [stmt]
+            case _:
+                return None
+
+    break_lines(program, breaker)
+
+def eliminate_control_lines(program):
+    """Eliminate multi-line control statements"""
+    break_control_lines(program)
+    def new_label():
+        counter = 0
+        while True:
+            yield f"@__control_{counter}"
+            counter += 1
+    def fixup_if(line, label):
+        if_cond = line.statements[0].condition
+        line.statements = [
+            If(line, Not(None, "NOT", if_cond), [BuiltIn(None, "GOTO", label)], [])
+        ]
+    def fixup_skip_else(line, label):
+        line.statements = [BuiltIn(None, "GOTO", label)]
+    def line_label(line):
+        if (label := line.label) is None:
+            label = Label(line, next(label_gen))
+            line.label = label
+        return label
+    def drop_stmt(line,i):
+        dropped = line.statements[0]
+        line.statements = line.statements[1:]
+        if not line.statements and line.line_number:
+            # If the next line lacks a line number, give it ours
+            if i+1 < len(program.lines) and not program.lines[i+1].line_number:
+                program.lines[i+1].line_number = line.line_number
+                line.line_number = None
+            else:
+                # No luck, we need to hang onto the line number in case someone
+                # wants to GOTO it
+                line.statements = [Rem(line, str(dropped))]
+    label_gen = new_label()
+    if_stack = []
+    else_stack = []
+    for i, line in enumerate(program.lines):
+        if isinstance(line, CommentLine) or len(line.statements) == 0:
+            continue
+        first_stmt = line.statements[0]
+        match first_stmt:
+            case LongIf():
+                if_stack.append(line)
+                else_stack.append([])
+            case PreElseStmt():
+                # Always directly before an ELSE
+                if not else_stack or isinstance(else_stack[-1], tuple):
+                    raise ValueError("Misplaced ELSE")
+                else_stack[-1].append(line)
+                else_stack[-1] = tuple(else_stack[-1])
+            case PreElseIfStmt():
+                # Always directly before an ELSE IF
+                if not else_stack or isinstance(else_stack[-1], tuple):
+                    raise ValueError("Misplaced ELSE IF")
+                else_stack[-1].append(line)
+            case Else():
+                fixup_if(if_stack[-1], line_label(line))
+                if_stack[-1] = None
+                drop_stmt(line,i)
+            case ElseIf():
+                fixup_if(if_stack[-1], line_label(line))
+                if_stack[-1] = line
+            case EndIf():
+                label = line_label(line)
+                if not if_stack:
+                    raise ValueError("Misplaced ENDIF")
+                elif else_stack[-1]:
+                    for fixup in else_stack[-1]:
+                        fixup_skip_else(fixup, label)
+                elif if_stack[-1]:
+                    fixup_if(if_stack[-1], label)
+                if_stack.pop()
+                else_stack.pop()
+                drop_stmt(line,i)
+    if if_stack:
+        raise ValueError(f"Unterminated IF ({if_stack[-1]})")
+
+
 def make_header(type_code: int, name: str, length: int, param1: int, param2: int) -> bytes:
     """Create a ZX Spectrum tape header block.
     
@@ -669,6 +844,7 @@ def main():
     parser.add_argument("filename", help="Filename of BASIC program to parse (use - for stdin)")
     parser.add_argument("--show", action="store_true", help="Show the parsed program")
     parser.add_argument("--run", action="store_true", help="Run the program (where possible)")
+    parser.add_argument("--decontrol", action="store_true", help="Simplify multi-line control statements to GOTOs")
     parser.add_argument("--number", action="store_true", help="Number any unnumbered lines")
     parser.add_argument("--delabel", action="store_true", help="Number any unnumbered lines and remove labels")
     parser.add_argument("--renumber", action="store_true", help="Renumber the program")
@@ -719,6 +895,8 @@ def main():
 
         if args.find_vars:
             print(json.dumps(find_variables(program), indent=4))
+        if args.decontrol:
+            eliminate_control_lines(program)
         if args.number or args.delabel:
             number_lines(program, remove_labels=args.delabel, start_line=args.start_line, default_increment=args.increment)
         if args.renumber:

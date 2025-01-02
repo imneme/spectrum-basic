@@ -177,9 +177,9 @@ SliceExpression: Slice | Expression;
 // =====================================
 Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
     Restore | Pause | Border | Run | List | LList | Clear | Randomize | Beep |
-    Out | Poke | Let | Read | Data | Dim | For | Next | If | ColourStmt | 
-    Plot | Draw | Circle | Print | Lprint | Input | Save |
-    Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
+    Out | Poke | Let | Read | Data | Dim | For | Next | If | LongIf | ElseIf |
+    Else | EndIf | ColourStmt | Plot | Draw | Circle | Print | Lprint | Input | 
+    Save | Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
 
 
 // Statement types organized by their class patterns
@@ -234,6 +234,10 @@ Dim: /DIM\b/ name=VarSymbol '(' dims+=Expression[','] ')';
 For: /FOR\b/ var=Variable '=' start=Expression /TO\b/ end=Expression (/STEP\b/ step=Expression)?;
 Next: /NEXT\b/ var=Variable;
 If: /IF\b/ condition=Expression /THEN\b/ statements+=JankyStatement[':'] after*=StmtIgnored;
+LongIf: /IF\b/ condition=Expression;
+ElseIf: /EL(SE[ \t]*|S|)IF\b/ condition=Expression;
+Else: /ELSE\b/ statements*=JankyStatement[':'] after*=StmtIgnored;
+EndIf: keyword=/END[ \t]*IF\b/;
 
 // ==================================
 // Colour control statements (CLASS_07)
