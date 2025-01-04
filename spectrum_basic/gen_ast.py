@@ -137,6 +137,11 @@ def gen_ast_classes(output_file):
               bytescode="[bjoin(statements, sep=b':'), bjoin(after)]", bsep=None,
               superclass="Statement")
     gen_class("EndIf", ["keyword"], format="ENDIF", bytescode="[]", superclass="Statement")
+    gen_class("Repeat", ["keyword"], format="REPEAT", bytescode="[]", superclass="Statement")
+    gen_class("Until", ["condition"], keyword="REPEAT", format="REPEAT UNTIL {condition}", 
+              bytescode="[token_to_byte('UNTIL'), condition]", bsep=None, superclass="Statement")
+    gen_class("While", ["condition"], superclass="Statement")
+    gen_class("Exit", ["exits","line"], format="{':'.join(exits)}{' '+str(line) if line else ''}", bytescode="[b':',token_to_byte('EXIT')] * (len(exits) - 1) + ([line] if line else [])", superclass="Statement")
     gen_class("Dim", ["name", "dims"], 
               format="DIM {name}({', '.join(str(d) for d in dims)})",
               bytescode="[name, b'(', bjoin(dims, sep=b','), b')']",

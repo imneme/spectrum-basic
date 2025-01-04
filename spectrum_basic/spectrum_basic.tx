@@ -178,7 +178,8 @@ SliceExpression: Slice | Expression;
 Statement: New | Stop | Return | Continue | Copy | Cls | Cat | Goto | Gosub |
     Restore | Pause | Border | Run | List | LList | Clear | Randomize | Beep |
     Out | Poke | Let | Read | Data | Dim | For | Next | If | LongIf | ElseIf |
-    Else | EndIf | ColourStmt | Plot | Draw | Circle | Print | Lprint | Input | 
+    Else | EndIf | Until | Repeat | While | Exit |
+    ColourStmt | Plot | Draw | Circle | Print | Lprint | Input | 
     Save | Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
 
 
@@ -238,6 +239,11 @@ LongIf: /IF\b/ condition=Expression;
 ElseIf: /EL(SE[ \t]*|S|)IF\b/ condition=Expression;
 Else: /ELSE\b/ statements*=JankyStatement[':'] after*=StmtIgnored;
 EndIf: keyword=/END[ \t]*IF\b/;
+Repeat: keyword=/REPEAT\b/;
+Until: /(REPEAT[ \t]+|)UNTIL\b/ condition=Expression;
+While: /WHILE\b/ condition=Expression;
+Exit: exits+=ExitKeyword[':'] (line=Expression)?;
+ExitKeyword: /EXIT\b/;
 
 // ==================================
 // Colour control statements (CLASS_07)

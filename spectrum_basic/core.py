@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, LongIf, Else, ElseIf, EndIf, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, LongIf, Else, ElseIf, EndIf, Repeat, Until, While, Exit, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
 
 # Object processors
 #
@@ -666,17 +666,39 @@ def break_lines(program, stmt_matcher):
         line.after = []
     program.lines = new_lines
 
-class PreElseStmt:
-    def walk(self):
-        yield (Walk.VISITING, self)
+class PreElseStmt(Statement): pass
+class PreElseIfStmt(Statement): pass
+class PostUntilStmt(Statement):
+    def __init__(self, exit_fixups):
+        self.exit_fixups = exit_fixups
+class PostNextStmt(Statement):
+    def __init__(self, exit_fixups):
+        self.exit_fixups = exit_fixups
 
-class PreElseIfStmt:
-    def walk(self):
-        yield (Walk.VISITING, self)
+def transmute_to_goto(stmt, line_expr):
+    """Overwrite an existing statement with a GOTO"""
+    # Deadly magic, do not try this at home
+    stmt.__class__ = BuiltIn
+    stmt.__init__(stmt.parent, "GOTO", line_expr)
 
 def break_control_lines(program):
     """Break lines at multi-line control statements"""
+    control_stack = []   # Pairs, [control_stmt, list_of_exits]
+    def exit_scan(stmt):
+        match stmt:
+            case Exit(exits=exits, line=None):
+                try:
+                    control_info = control_stack[-len(exits)]
+                    control_info[1].append(stmt)
+                except IndexError:
+                    raise ValueError("EXIT without corresponding control statement")
+            case Exit(line=line):
+                transmute_to_goto(stmt, line)
+            case If(statements=stmts) | Else(statements=stmts):
+                for stmt in stmts:
+                    exit_scan(stmt)
     def breaker(stmt):
+        exit_scan(stmt)
         match stmt:
             case Else():
                 stmts = stmt.statements
@@ -688,8 +710,28 @@ def break_control_lines(program):
                     return ([PreElseStmt()], [stmt], *bstmts)
             case ElseIf():
                 return ([PreElseIfStmt()], [stmt])
-            case LongIf() | EndIf():
+            case Until():
+                if not control_stack:
+                    raise ValueError("Misplaced {stmt} (no active loop)")
+                control_info = control_stack.pop()
+                if control_info[0].__class__ is not Repeat:
+                    raise ValueError(f"Mismatched {stmt} (matches {control_info[0]})")
+                return ([stmt], [PostUntilStmt(control_info[1])])
+            case LongIf() | EndIf() | While():
                 return [stmt]
+            case Repeat():
+                control_stack.append([stmt, []])
+                return [stmt]
+            case For():
+                control_stack.append([stmt, []])
+                return None
+            case Next(var=var):
+                if not control_stack:
+                    raise ValueError("Misplaced {stmt} (no active loop)")
+                control_info = control_stack.pop()
+                if control_info[0].__class__ is not For or control_info[0].var.name != var.name:
+                    raise ValueError(f"Mismatched {stmt} (matches {control_info[0]})")
+                return ([stmt],[PostNextStmt(control_info[1])]) if control_info[1] else None
             case _:
                 return None
 
@@ -708,7 +750,7 @@ def eliminate_control_lines(program):
         line.statements = [
             If(line, Not(None, "NOT", if_cond), [BuiltIn(None, "GOTO", label)], [])
         ]
-    def fixup_skip_else(line, label):
+    def fixup_goto_placeholder(line, label):
         line.statements = [BuiltIn(None, "GOTO", label)]
     def line_label(line):
         if (label := line.label) is None:
@@ -728,13 +770,44 @@ def eliminate_control_lines(program):
                 # wants to GOTO it
                 line.statements = [Rem(line, str(dropped))]
     label_gen = new_label()
-    if_stack = []
-    else_stack = []
+    if_stack = []       # IFs to patch
+    else_stack = []     # Lines-Before-ELSEs to patch
+    repeat_stack = []   # Labels of REPEAT lines
+    while_stack = []    # WHILEs to patch
     for i, line in enumerate(program.lines):
         if isinstance(line, CommentLine) or len(line.statements) == 0:
             continue
         first_stmt = line.statements[0]
         match first_stmt:
+            case Repeat():
+                repeat_stack.append(line_label(line))
+                while_stack.append([])
+                drop_stmt(line,i)
+            case While():
+                if not while_stack:
+                    raise ValueError("Misplaced WHILE")
+                while_stack[-1].append(line)
+            case Until(condition=cond):
+                if not repeat_stack:
+                    raise ValueError("Misplaced UNTIL")
+                label = repeat_stack[-1]
+                match cond:
+                    case Number(value=0):
+                        fixup_goto_placeholder(line, label)
+                    case _:
+                        fixup_if(line, label)
+            case PostUntilStmt(exit_fixups=fixups):
+                repeat_stack.pop()
+                label = line_label(line)
+                for fixup in while_stack.pop():
+                    fixup_if(fixup, label)
+                for fix_exit in fixups:
+                    transmute_to_goto(fix_exit, label)
+                drop_stmt(line,i)
+            case PostNextStmt(exit_fixups=fixups):
+                for fix_exit in fixups:
+                    transmute_to_goto(fix_exit, line_label(line))
+                drop_stmt(line,i)
             case LongIf():
                 if_stack.append(line)
                 else_stack.append([])
@@ -762,7 +835,7 @@ def eliminate_control_lines(program):
                     raise ValueError("Misplaced ENDIF")
                 elif else_stack[-1]:
                     for fixup in else_stack[-1]:
-                        fixup_skip_else(fixup, label)
+                        fixup_goto_placeholder(fixup, label)
                 elif if_stack[-1]:
                     fixup_if(if_stack[-1], label)
                 if_stack.pop()
@@ -770,6 +843,8 @@ def eliminate_control_lines(program):
                 drop_stmt(line,i)
     if if_stack:
         raise ValueError(f"Unterminated IF ({if_stack[-1]})")
+    if repeat_stack:
+        raise ValueError(f"Unterminated REPEAT")
 
 
 def make_header(type_code: int, name: str, length: int, param1: int, param2: int) -> bytes:
@@ -863,6 +938,7 @@ def main():
 
     # Currently running the code requires it have no labels, as does making a TAP file
     if args.run or args.tap:
+        args.decontrol = True
         args.delabel = True
 
     # Sanity check args for renumbering, etc
