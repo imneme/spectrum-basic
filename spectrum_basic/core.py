@@ -58,7 +58,7 @@ from .tokenizer import *
 META_PATH = join(dirname(__file__), "spectrum_basic.tx")
 
 # Create meta-model
-metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, LongIf, Else, ElseIf, EndIf, Repeat, Until, While, Exit, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
+metamodel = metamodel_from_file(META_PATH, ws='\t ', ignore_case=True, classes=[JankyStatement, Statement, Let, For, Next, If, LongIf, Else, ElseIf, EndIf, Repeat, Until, While, Exit, ContinueLoop, Dim, DefFn, Data, Read, PrintItem, JankyFunctionExpr, Variable, BinValue, ArrayRef, InputExpr, Not, Neg, Fn, Slice, Number, String, ChanSpec, Rem, Label, Program, SourceLine, CommentLine])
 
 # Object processors
 #
@@ -683,7 +683,7 @@ def transmute_to_goto(stmt, line_expr):
 
 def break_control_lines(program):
     """Break lines at multi-line control statements"""
-    control_stack = []   # Pairs, [control_stmt, list_of_exits]
+    control_stack = []   # Pairs, [control_stmt, list_of_exits, list_of_conts]
     def exit_scan(stmt):
         match stmt:
             case Exit(exits=exits, line=None):
@@ -691,9 +691,15 @@ def break_control_lines(program):
                     control_info = control_stack[-len(exits)]
                     control_info[1].append(stmt)
                 except IndexError:
-                    raise ValueError("EXIT without corresponding control statement")
+                    raise ValueError(f"{stmt} without corresponding control statement")
             case Exit(line=line):
                 transmute_to_goto(stmt, line)
+            case ContinueLoop(nexts=nexts):
+                try:
+                    control_info = control_stack[-len(nexts)]
+                    control_info[2].append(stmt)
+                except IndexError:
+                    raise ValueError(f"{stmt} without corresponding control statement")
             case If(statements=stmts) | Else(statements=stmts):
                 for stmt in stmts:
                     exit_scan(stmt)
@@ -716,14 +722,15 @@ def break_control_lines(program):
                 control_info = control_stack.pop()
                 if control_info[0].__class__ is not Repeat:
                     raise ValueError(f"Mismatched {stmt} (matches {control_info[0]})")
+                stmt.continues = control_info[2]
                 return ([stmt], [PostUntilStmt(control_info[1])])
             case LongIf() | EndIf() | While():
                 return [stmt]
             case Repeat():
-                control_stack.append([stmt, []])
+                control_stack.append([stmt, [], []])
                 return [stmt]
             case For():
-                control_stack.append([stmt, []])
+                control_stack.append([stmt, [], []])
                 return None
             case Next(var=var):
                 if not control_stack:
@@ -731,7 +738,10 @@ def break_control_lines(program):
                 control_info = control_stack.pop()
                 if control_info[0].__class__ is not For or control_info[0].var.name != var.name:
                     raise ValueError(f"Mismatched {stmt} (matches {control_info[0]})")
-                return ([stmt],[PostNextStmt(control_info[1])]) if control_info[1] else None
+                stmt.continues = control_info[2]
+                if not control_info[1] and not control_info[2]:
+                    return None
+                return ([stmt],[PostNextStmt(control_info[1])])
             case _:
                 return None
 
@@ -811,15 +821,22 @@ def eliminate_control_lines(program):
                 if not while_stack:
                     raise ValueError("Misplaced WHILE")
                 while_stack[-1].append(line)
-            case Until(condition=cond):
+            case Until(condition=cond, continues=fixup_conts):
                 if not repeat_stack:
                     raise ValueError("Misplaced UNTIL")
                 label = repeat_stack[-1]
                 match cond:
                     case Number(value=0):
                         fixup_goto_placeholder(line, label)
+                        cont_label = label
                     case _:
                         fixup_if(line, label)
+                        cont_label = line_label(line)
+                for fix_cont in fixup_conts:
+                    transmute_to_goto(fix_cont, cont_label)
+            case Next(continues=fixup_conts):
+                for fix_cont in fixup_conts:
+                    transmute_to_goto(fix_cont, line_label(line))
             case PostUntilStmt(exit_fixups=fixups):
                 repeat_stack.pop()
                 label = line_label(line)
