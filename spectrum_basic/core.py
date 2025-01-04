@@ -737,6 +737,30 @@ def break_control_lines(program):
 
     break_lines(program, breaker)
 
+def negate_condition(cond):
+    """Negate a condition"""
+    match cond:
+        case Not(expr=subcond):
+            return subcond
+        case BinaryOp(op=op, lhs=lhs, rhs=rhs):
+            match op:
+                case "<":  return BinaryOp(">=", lhs, rhs)
+                case "<=": return BinaryOp(">", lhs, rhs)
+                case "=":  return BinaryOp("<>", lhs, rhs)
+                case "<>": return BinaryOp("=", lhs, rhs)
+                case ">":  return BinaryOp("<=", lhs, rhs)
+                case ">=": return BinaryOp("<", lhs, rhs)
+                case "AND": 
+                    return BinaryOp("OR", negate_condition(lhs), 
+                                          negate_condition(rhs))
+                case "OR":
+                    return BinaryOp("AND", negate_condition(lhs),
+                                           negate_condition(rhs))
+                case _:
+                    return Not(None, "NOT", cond)
+        case _:
+            return Not(None, "NOT", cond)
+
 def eliminate_control_lines(program):
     """Eliminate multi-line control statements"""
     break_control_lines(program)
@@ -748,7 +772,7 @@ def eliminate_control_lines(program):
     def fixup_if(line, label):
         if_cond = line.statements[0].condition
         line.statements = [
-            If(line, Not(None, "NOT", if_cond), [BuiltIn(None, "GOTO", label)], [])
+            If(line, negate_condition(if_cond), [BuiltIn(None, "GOTO", label)], [])
         ]
     def fixup_goto_placeholder(line, label):
         line.statements = [BuiltIn(None, "GOTO", label)]
