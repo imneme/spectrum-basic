@@ -50,6 +50,9 @@ speccy-basic program.bas --show
 # Number unnumbered lines and remove labels
 speccy-basic program.bas --delabel
 
+# Convert Spectrum Next control structures to GOTOs
+speccy-basic program.bas --decontrol
+
 # Minimize variable names
 speccy-basic program.bas --minimize
 

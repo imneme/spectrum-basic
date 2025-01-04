@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spectrum-basic"
-version = "0.6"
+version = "0.6.1"
 description = "A parser and language tool for ZX Spectrum BASIC"
 authors = [
     {name = "Melissa E. O'Neill", email = "oneill@acm.org"},
