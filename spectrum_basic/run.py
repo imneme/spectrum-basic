@@ -88,12 +88,12 @@ class ProgramInfo:
     def _flattened_statements(statements):
         """Flatten a line of statements to handle IF statements"""
         for stmt in statements:
+            while isinstance(stmt, JankyStatement):
+                stmt = stmt.actual
             match stmt:
                 case If(condition=cond, statements=stmts, parent=parent, after=after):
                     yield If(condition=cond, statements=[], parent=parent, after=None)
                     yield from ProgramInfo._flattened_statements(stmts)
-                case JankyStatement(actual=stmt):
-                    continue
                 case _:
                     yield stmt
 
@@ -190,7 +190,10 @@ class Environment:
         if not isinstance(var, str):
             raise ZXBasicError('C', f"Variable name {var} is not a string")
         var = var.lower()
-        self.vars.setdefault(var, {})['value'] = value
+        vardict = self.vars.setdefault(var, {})
+        if is_stringvar(var) and vardict.get('str_len') is not None:
+            value = force_width(value, self.vars[var]['str_len'])
+        vardict['value'] = value
 
     def for_loop(self, var, line_idx, stmt_idx, start, end, step):
         """Start a FOR loop"""
@@ -263,6 +266,11 @@ class Environment:
             dims = list(dims)
             str_len = dims.pop()
             init_val = " " * str_len
+            if dims == []:
+                # It's a plain old string variable with fixed length, not an array
+                self.let_var(var, init_val)
+                self.vars[var]['str_len'] = str_len
+                return
         else:
             init_val = 0
         def nest(i):
