@@ -489,14 +489,22 @@ def renumber(program, start_line=10, increment=10):
     for event, obj in walk(program):
         if event == Walk.ENTERING:
             match obj:
-                case BuiltIn(action="GOTO" | "GOSUB" | "RESTORE" | "RUN", args=[target]) if isinstance(target, Number):
+                case BuiltIn(action="GOTO" | "GOSUB" | "RESTORE" | "RUN", args=[target]):
+                    if not isinstance(target, Number):
+                        raise ValueError(f"Cannot renumber {obj.action} to non-numeric line number: {target}")
                     # Simple numeric constant
                     line_num = int(target.value)
                     if line_num not in line_map:
                         raise ValueError(f"Invalid {obj.action} to non-existent line {line_num}")
                     obj.args = (line_map[line_num],)
-                case BuiltIn(action="GOTO" | "GOSUB"):
-                    raise ValueError(f"Cannot renumber {obj.action} with computed line number: {obj.args[0]}")
+                case BuiltIn(action="SAVE", args=[filename, BuiltIn(action="LINE", args=[target])]):
+                    if not isinstance(target, Number):
+                        raise ValueError(f"Cannot renumber SAVE .. LINE to non-numeric line number: {target}")
+                    # Simple numeric constant
+                    line_num = int(target.value)
+                    if line_num not in line_map:
+                        raise ValueError(f"Invalid SAVE .. LINE to non-existent line {line_num}")
+                    obj.args[1].args = (line_map[line_num],)
     
     return program
 
