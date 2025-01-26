@@ -187,7 +187,6 @@ metamodel.register_obj_processors({
     "Input": ap_print_like,
     # 1-argument modifiers
     "Tab": ap_standard,
-    "SaveLine": make_ap_to_builtin("LINE"),
     "InputLine": make_ap_to_builtin("LINE"),
     # 2-argument print-modifiers
     "At": ap_standard,
