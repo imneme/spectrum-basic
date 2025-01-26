@@ -195,8 +195,7 @@ class ColouredBuiltin(BuiltIn):
             parts.append("; ".join(colour_strs))
             parts.append(";")
         if self.args:
-            if self.colours:
-                parts.append(" ")
+            parts.append(" ")
             parts.append(self.sep.join(map(str, self.args)))
         return "".join(parts)
 
