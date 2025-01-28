@@ -245,7 +245,7 @@ Until: /(REPEAT[ \t]+|)UNTIL\b/ condition=Expression;
 While: /WHILE\b/ condition=Expression;
 Exit: exits+=ExitKeyword[':'] (line=Expression)?;
 ExitKeyword: /EXIT\b/;
-ContinueLoop: /GOTO\b/ nexts+=NextKeyword;
+ContinueLoop: /GOTO\b/ nexts+=NextKeyword | /GO TO\b/ nexts+=NextKeyword;
 NextKeyword: /NEXT\b/;
 
 // ==================================
