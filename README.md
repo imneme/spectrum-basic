@@ -31,7 +31,7 @@ pip install -e .
 Install from PyPI:
 
 ```bash
-pip install speccy-basic
+pip install spectrum-basic
 ``` 
 
 
