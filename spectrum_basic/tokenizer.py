@@ -27,24 +27,24 @@ CODE_FOR = {token: i+128+1 for i, token in enumerate(TOKENS)}
 
 BLOCK_ESCAPES = ["  ", " '", "' ", "''", " .", " :", "'.", "':",
                 ". ", ".'", ": ", ":'", "..", ".:", ":.", "::"]
-UNICODE_BLOCKS = {
-    "\u2800",   # U+2800 BRAILLE PATTERN BLANK
-    "▘",        # Top left
+UNICODE_BLOCKS = [
+    "\u2800",   # Blank
     "▝",        # Top right
-    "▀",        # Top half (both top blocks)
-    "▖",        # Bottom left
-    "▌",        # Left half
-    "▞",        # Diagonal
-    "▛",        # Three blocks (missing bottom right)
+    "▘",        # Top left
+    "▀",        # Top half
     "▗",        # Bottom right
-    "▚",        # Diagonal
     "▐",        # Right half
+    "▚",        # Diagonal \
     "▜",        # Three blocks (missing bottom left)
+    "▖",        # Bottom left
+    "▞",        # Diagonal /
+    "▌",        # Left half
+    "▛",        # Three blocks (missing bottom right)
     "▄",        # Bottom half
-    "▙",        # Three blocks (missing top right)
     "▟",        # Three blocks (missing top left)
+    "▙",        # Three blocks (missing top right)
     "█",        # Full block
-}
+]
 
 BYTE_FOR_BLOCK_ESCAPE = {glyph.encode("ascii"): bytes([i+128]) for i, glyph in enumerate(BLOCK_ESCAPES)}
 BYTE_FOR_UNICODE = {
