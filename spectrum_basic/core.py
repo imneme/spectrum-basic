@@ -881,10 +881,10 @@ def eliminate_control_lines(program):
                 label = line_label(line)
                 if not if_stack:
                     raise ValueError("Misplaced ENDIF")
-                elif else_stack[-1]:
+                if else_stack[-1]:
                     for fixup in else_stack[-1]:
                         fixup_goto_placeholder(fixup, label)
-                elif if_stack[-1]:
+                if if_stack[-1]:
                     fixup_if(if_stack[-1], label)
                 if_stack.pop()
                 else_stack.pop()
