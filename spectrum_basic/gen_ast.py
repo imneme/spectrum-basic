@@ -160,7 +160,15 @@ def gen_ast_classes(output_file):
 
     gen_class("Variable", ["name"], is_leaf=True, init=["name.replace(' ', '').replace('\\t', '')"], format="{name}", superclass="Expression", no_token=True)
     gen_class("Number", ["value"], format="{value}", is_leaf=True, superclass="Expression", no_token=True,
-              bytescode="[num_to_bytes(value)]")
+              bytescode="[num_to_bytes(value)]", dont_code=["__init__"], xcode="""
+    def __init__(self, parent, value):
+        self.parent = parent
+        if isinstance(value, str) and value.startswith('$'):
+            value = int(value[1:], 16)
+        elif isinstance(value, str) and value.startswith('@'):
+            value = int(value[1:], 2)
+        self.value = value
+""")
     gen_class("String", ["value"], format="{speccy_quote(value)}", is_leaf=True, init=["value[1:-1]"], superclass="Expression", no_token=True,
                 bytescode="[strlit_to_bytes(value)]")
     gen_class("BinValue", ["digits"], keyword="BIN", is_leaf=True)

@@ -156,7 +156,7 @@ Primary: Number | LitStringExpr | Label | VarDest | ParenExpr;
 LitStringExpr: expr=String ( '(' subscript=SliceExpression ')' )?;
 ParenExpr: '(' expr=Expression ')' ( '(' subscript=SliceExpression ')' )?;
 
-Number: value=NUMBER;
+Number: value=NUMBER | value=/\$[0-9A-Fa-f]+/ | value=/@[01]+/;
 String: value=/"(?:[^"\n]|"")*"/;
 
 // Variables and Array references
