@@ -180,7 +180,7 @@ Statement: New | Stop | Return | Continue | Copy | Cls | Cat | ContinueLoop |
     Restore | Pause | Border | Run | List | LList | Clear | Randomize | Beep |
     Out | Poke | Let | Read | Data | Dim | For | Next | If | LongIf | ElseIf |
     Else | EndIf | Until | Repeat | While | Exit |
-    ColourStmt | Plot | Draw | Circle | Print | Lprint | Input | 
+    ColourStmt | Plot | Draw | Circle | Print | Lprint | Input | Play |
     Save | Load | Verify | Merge | OpenHash | CloseHash | DefFn | Rem ;
 
 
@@ -310,6 +310,11 @@ DefFn: /DEF\b/ /FN\b/ name=VarSymbol ('(' params*=VarSymbol[','] ')')? '=' expr=
 // Rem (special case - consumes to EOL)
 // ==================================
 Rem: /REM\b/ comment=/[^\r\n]*/;
+
+// ==================================
+// Music and sound statements
+// ==================================
+Play: /PLAY\b/ items+=Expression[','];
 
 // ==================================
 // Additions to the ZX Spectrum BASIC grammar

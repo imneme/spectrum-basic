@@ -89,6 +89,20 @@ def make_ap_to_builtin(name=None, sep=", "):
 ap_standard = make_ap_to_builtin()
 ap_saveload = make_ap_to_builtin(sep=" ")
 
+def make_ap_listlike(name=None, sep=", ", minItems=0, maxItems=None):
+    """Create an object processor for syntax elements that become generic BuiltIn objects with lists of arguments"""
+    def ap_listlike(obj):
+        """Object processor for syntax elements that become generic BuiltIn objects with lists of arguments"""
+        builtin_name = name or get_name(obj)
+        if minItems is not None and len(obj.items) < minItems:
+            # raise ValueError(f"Too few items in {builtin_name}")
+            raise textx.exceptions.TextXSyntaxError(f'Too few items in {builtin_name}', **textx.get_location(obj))
+        if maxItems is not None and len(obj.items) > maxItems:
+            # raise ValueError(f"Too many items in {builtin_name}")
+            raise textx.exceptions.TextXSyntaxError(f'Too many items in {builtin_name}', **textx.get_location(obj))
+        return BuiltIn(obj.parent, builtin_name, *obj.items, sep=sep)
+    return ap_listlike
+
 def ap_coloured(obj):
     """Object processor for PLOT/DRAW/CIRCLE commands with optional colour parameters"""
     # Circle or Draw with angle
@@ -181,6 +195,8 @@ metamodel.register_obj_processors({
     "FileScreen": ap_standard,
     "OpenHash": make_ap_to_builtin("OPEN #"),
     "CloseHash": make_ap_to_builtin("CLOSE #"),
+    # Music commands
+    "Play": make_ap_listlike(minItems=1, maxItems=3),
     # PRINT-like statements
     "Print": ap_print_like,
     "Lprint": ap_print_like,
