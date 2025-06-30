@@ -12,7 +12,7 @@ SourceLine: (line_number=INT)? (label=Label ':')? statements*=JankyStatement[':'
 JankyStatement: ( before+=StmtIgnored )? actual=Statement ( after+=ColourCode )? | before+=StmtIgnored;
 StmtIgnored: Colon | ColourCode;
 Colon: /:/;
-ColourCode: /\\\{([ipfibo]\d+|vi|vn)+\}/;
+ColourCode: /\\\{([ipfrbo]\d+|vi|vn)+\}/;
 
 
 // =====================================
