@@ -139,9 +139,10 @@ FunctionExpr: Function | SpecialFn | Neg | Primary;
 
 // Functions (parentheses optional unless needed for precedence)
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
-FunctionName: /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ | 
+// ('VAL$' before /VAL\b/: the \b matches between VAL and $)
+FunctionName: 'VAL$' | /ABS\b/ | /ACS\b/ | /ASN\b/ | /ATN\b/ | /COS\b/ | /EXP\b/ | /INT\b/ |
              /LN\b/ | /SGN\b/ | /SIN\b/ | /SQR\b/ | /TAN\b/ | /USR\b/ | /LEN\b/ |
-             /CODE\b/ | /IN\b/ | /VAL\b/ | /PEEK\b/ | 'CHR$' | 'STR$' | 'VAL$';
+             /CODE\b/ | /IN\b/ | /VAL\b/ | /PEEK\b/ | 'CHR$' | 'STR$';
 
 // Functions with multiple arguments
 TwoArgName: /ATTR\b/ | /POINT\b/ | 'SCREEN$';

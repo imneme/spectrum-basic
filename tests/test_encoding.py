@@ -77,5 +77,19 @@ class TestUnaryMinus(unittest.TestCase):
         self.assertEqual(' '.join(str(parse_string('10 LET a=-2^2\n')).split()), '10 LET a = -2 ^ 2')
 
 
+class TestValDollar(unittest.TestCase):
+    """VAL$ is a function name of its own, not VAL followed by '$'."""
+
+    def test_val_dollar_of_function(self):
+        self.assertEqual(line_body('10 LET a$=VAL$ STR$ 1\n'),
+                         b'\xf1a$=\xae\xc11' + hidden(1))
+
+    def test_len_of_val_dollar(self):
+        self.assertEqual(line_body('10 LET n=LEN VAL$ "x"\n'), b'\xf1n=\xb1\xae"x"')
+
+    def test_val_still_works(self):
+        self.assertEqual(line_body('10 LET n=VAL "2"\n'), b'\xf1n=\xb0"2"')
+
+
 if __name__ == '__main__':
     unittest.main()
