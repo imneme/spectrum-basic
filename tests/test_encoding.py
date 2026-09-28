@@ -55,5 +55,27 @@ class TestLprint(unittest.TestCase):
             self.assertEqual(lp, bytes([0xE0]) + p[1:], items)
 
 
+class TestUnaryMinus(unittest.TestCase):
+    """A minus sign before a number is stored as '-' and the number's digits,
+    with the hidden number positive; also where an operand follows ^ or a
+    function name."""
+
+    def test_after_power(self):
+        self.assertEqual(line_body('10 LET a=2^-1\n'),
+                         b'\xf1a=2' + hidden(2) + b'^-1' + hidden(1))
+
+    def test_after_function(self):
+        self.assertEqual(line_body('10 PRINT SIN -1\n'), b'\xf5\xb2-1' + hidden(1))
+        self.assertEqual(line_body('10 PRINT ABS -x\n'), b'\xf5\xbd-x')
+
+    def test_unchanged_elsewhere(self):
+        self.assertEqual(line_body('10 LET a=-1\n'), b'\xf1a=-1' + hidden(1))
+        self.assertEqual(line_body('10 DATA -1,2\n'), b'\xe4-1' + hidden(1) + b',2' + hidden(2))
+
+    def test_power_binds_tighter_than_minus(self):
+        # -2^2 is -(2^2), as on the Spectrum
+        self.assertEqual(' '.join(str(parse_string('10 LET a=-2^2\n')).split()), '10 LET a = -2 ^ 2')
+
+
 if __name__ == '__main__':
     unittest.main()

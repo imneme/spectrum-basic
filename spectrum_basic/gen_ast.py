@@ -167,6 +167,8 @@ def gen_ast_classes(output_file):
             value = int(value[1:], 16)
         elif isinstance(value, str) and value.startswith('@'):
             value = int(value[1:], 2)
+        elif isinstance(value, str):
+            value = int(value) if value.isdigit() else float(value)
         self.value = value
 """)
     gen_class("String", ["value"], format="{speccy_quote(value)}", is_leaf=True, init=["value[1:-1]"], superclass="Expression", no_token=True,

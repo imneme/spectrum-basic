@@ -134,7 +134,8 @@ PowerOpExpr: op='^' expr=JankyFunctionExpr;
 JankyFunctionExpr: (before+=ColourCode)? actual=FunctionExpr (after+=ColourCode)?;
 
 // Functions and primary expressions
-FunctionExpr: Function | SpecialFn | Primary;
+// (a unary minus may start an operand here too: 2^-1, SIN -x)
+FunctionExpr: Function | SpecialFn | Neg | Primary;
 
 // Functions (parentheses optional unless needed for precedence)
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
@@ -156,7 +157,9 @@ Primary: Number | LitStringExpr | Label | VarDest | ParenExpr;
 LitStringExpr: expr=String ( '(' subscript=SliceExpression ')' )?;
 ParenExpr: '(' expr=Expression ')' ( '(' subscript=SliceExpression ')' )?;
 
-Number: value=NUMBER | value=/\$[0-9A-Fa-f]+/ | value=/@[01]+/;
+// Numbers in a program are unsigned: a minus sign before one is the '-' operator
+Number: value=UNSIGNED_NUMBER | value=/\$[0-9A-Fa-f]+/ | value=/@[01]+/;
+UNSIGNED_NUMBER: /(\d+\.\d*|\.\d+|\d+)([eE][-+]?\d+)?(?![\w.])/;
 String: value=/"(?:[^"\n]|"")*"/;
 
 // Variables and Array references
