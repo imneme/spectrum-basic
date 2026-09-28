@@ -37,5 +37,23 @@ class TestBin(unittest.TestCase):
                          b'\xf1a=\xc40' + hidden(0))
 
 
+class TestLprint(unittest.TestCase):
+    """LPRINT takes the same items and separators as PRINT."""
+
+    def test_lprint_string(self):
+        self.assertEqual(line_body('10 LPRINT "p"\n'), b'\xe0"p"')
+
+    def test_lprint_separators(self):
+        self.assertEqual(line_body('10 LPRINT "a";1,x\'\n'),
+                         b'\xe0"a";1' + hidden(1) + b",x'")
+
+    def test_lprint_same_as_print(self):
+        for items in ['"x"', 'a;b', 'AT 1,2;"y"', 'TAB 5;z,', '#3;"q"']:
+            p = line_body(f'10 PRINT {items}\n')
+            lp = line_body(f'10 LPRINT {items}\n')
+            self.assertEqual(p[0], 0xF5)
+            self.assertEqual(lp, bytes([0xE0]) + p[1:], items)
+
+
 if __name__ == '__main__':
     unittest.main()
