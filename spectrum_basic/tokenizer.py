@@ -199,6 +199,14 @@ def num_to_bytes(num):
     binary = num_to_specfloat(num)
     return textbytes + b'\x0e' + binary
 
+def bin_to_bytes(digits):
+    """Convert the digits of a BIN literal to program bytes: the digits, then
+    (as for any number) 0x0E and the value in the 5-byte format.  BIN with no
+    digits is 0."""
+    digits = digits or ''
+    value = int(digits, 2) if digits else 0
+    return digits.encode('ascii') + b'\x0e' + num_to_specfloat(value)
+
 def line_to_bytes(lineno, linebytes):
     """Convert a line number and line bytes to a BASIC program line."""
     terminated_line = linebytes + b'\x0d'

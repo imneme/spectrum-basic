@@ -171,7 +171,7 @@ def gen_ast_classes(output_file):
 """)
     gen_class("String", ["value"], format="{speccy_quote(value)}", is_leaf=True, init=["value[1:-1]"], superclass="Expression", no_token=True,
                 bytescode="[strlit_to_bytes(value)]")
-    gen_class("BinValue", ["digits"], keyword="BIN", is_leaf=True)
+    gen_class("BinValue", ["digits"], keyword="BIN", is_leaf=True, bytescode="[bin_to_bytes(digits)]")
     gen_class("ArrayRef", ["name", "subscripts"], format="{name}({', '.join(str(s) for s in subscripts)})",
               bytescode="[name, b'(', bjoin(subscripts, sep=b','), b')']", no_token=True, superclass="Expression")
     gen_class("Fn", ["name", "args"], format="FN {name}({', '.join(str(arg) for arg in args)})",
