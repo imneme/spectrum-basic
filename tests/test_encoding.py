@@ -91,5 +91,26 @@ class TestValDollar(unittest.TestCase):
         self.assertEqual(line_body('10 LET n=VAL "2"\n'), b'\xf1n=\xb0"2"')
 
 
+class TestNotInOperand(unittest.TestCase):
+    """NOT may start any operand, and then applies to everything to its right down to
+    comparison level, as in the ROM: with a=0, 1+NOT a is 2, 1+NOT 0+1 is 1,
+    -NOT a is -1, 2*NOT a is 2 and 1+NOT 1=0 is 2."""
+
+    def test_bytes(self):
+        self.assertEqual(line_body('10 LET x=1+NOT a\n'), b'\xf1x=1' + hidden(1) + b'+\xc3a')
+        self.assertEqual(line_body('10 LET x=-NOT a\n'), b'\xf1x=-\xc3a')
+        self.assertEqual(line_body('10 LET x=2*NOT a\n'), b'\xf1x=2' + hidden(2) + b'*\xc3a')
+
+    def test_extent(self):
+        # NOT takes the 0+1 and the comparison 1=0, not just the next number
+        prog = parse_string('10 LET x=1+NOT 0+1\n20 LET y=1+NOT 1=0\n')
+        lines = [' '.join(str(line).split()) for line in prog.lines]
+        self.assertEqual(lines, ['10 LET x = 1 + NOT 0 + 1', '20 LET y = 1 + NOT 1 = 0'])
+        (x,), (y,) = [line.statements for line in prog.lines]
+        self.assertEqual(type(x.expr.rhs).__name__, 'Not')
+        self.assertEqual(str(x.expr.rhs.expr), '0 + 1')
+        self.assertEqual(str(y.expr.rhs.expr), '1 = 0')
+
+
 if __name__ == '__main__':
     unittest.main()

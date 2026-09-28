@@ -134,8 +134,9 @@ PowerOpExpr: op='^' expr=JankyFunctionExpr;
 JankyFunctionExpr: (before+=ColourCode)? actual=FunctionExpr (after+=ColourCode)?;
 
 // Functions and primary expressions
-// (a unary minus may start an operand here too: 2^-1, SIN -x)
-FunctionExpr: Function | SpecialFn | Neg | Primary;
+// (a unary minus or NOT may start an operand here too: 2^-1, SIN -x, 1+NOT a;
+// as in the ROM, NOT then applies to everything to its right down to comparisons)
+FunctionExpr: Function | SpecialFn | Neg | Not | Primary;
 
 // Functions (parentheses optional unless needed for precedence)
 Function: name=FunctionName (expr=FunctionExpr | '(' expr=Expression ')');
